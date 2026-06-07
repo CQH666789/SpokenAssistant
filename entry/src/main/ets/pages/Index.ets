@@ -16,6 +16,8 @@ const COLOR_PRIMARY_DARK = '#9B4323';
 const COLOR_GOOD = '#2C8572';
 const COLOR_BLUE = '#3B6D8F';
 const COLOR_WARN_BG = '#FCE8DA';
+const LEVEL_ALL = 'All';
+const LEVEL_FILTERS: string[] = [LEVEL_ALL, 'A2', 'B1', 'B2'];
 
 @Entry
 @Component
@@ -31,6 +33,7 @@ struct Index {
   @State private scoreTotal: number = 0;
   @State private bestScore: number = 0;
   @State private averageScore: number = 0;
+  @State private selectedLevel: string = LEVEL_ALL;
 
   private recorder?: RecorderService;
   private playback: PlaybackService = new PlaybackService();
@@ -53,6 +56,7 @@ struct Index {
         Column({ space: 18 }) {
           this.Header()
           this.ProgressStrip()
+          this.LevelSelector()
           this.SentenceCard()
           this.RecorderPanel()
           this.ResultPanel()
@@ -87,11 +91,11 @@ struct Index {
       .layoutWeight(1)
 
       Column({ space: 2 }) {
-        Text(`${this.sentenceIndex + 1}/${TRAINING_SENTENCES.length}`)
+        Text(`${this.currentSentencePosition()}/${this.filteredSentenceCount()}`)
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_BLUE)
-        Text(this.sentence.level)
+        Text(this.selectedLevel === LEVEL_ALL ? 'All levels' : this.selectedLevel)
           .fontSize(11)
           .fontColor(COLOR_MUTED)
       }
@@ -127,6 +131,28 @@ struct Index {
     .backgroundColor(COLOR_CARD)
     .borderRadius(8)
     .border({ width: 1, color: COLOR_LINE })
+  }
+
+  @Builder
+  private LevelSelector() {
+    Row({ space: 8 }) {
+      ForEach(LEVEL_FILTERS, (level: string) => {
+        Button(level)
+          .height(38)
+          .layoutWeight(1)
+          .fontSize(13)
+          .fontWeight(this.selectedLevel === level ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(this.selectedLevel === level ? Color.White : COLOR_INK)
+          .backgroundColor(this.selectedLevel === level ? COLOR_BLUE : COLOR_CARD)
+          .borderRadius(6)
+          .border({ width: 1, color: this.selectedLevel === level ? COLOR_BLUE : COLOR_LINE })
+          .enabled(!this.isBusy())
+          .onClick(() => {
+            this.selectLevel(level);
+          })
+      }, (level: string) => level)
+    }
+    .width('100%')
   }
 
   @Builder
@@ -476,8 +502,21 @@ struct Index {
   }
 
   private nextSentence(): void {
-    this.sentenceIndex = (this.sentenceIndex + 1) % TRAINING_SENTENCES.length;
-    this.sentence = TRAINING_SENTENCES[this.sentenceIndex];
+    const nextIndex = this.findNextSentenceIndex(this.sentenceIndex);
+    this.sentenceIndex = nextIndex;
+    this.sentence = TRAINING_SENTENCES[nextIndex];
+    this.resetAttempt();
+  }
+
+  private selectLevel(level: string): void {
+    if (this.selectedLevel === level) {
+      return;
+    }
+
+    this.selectedLevel = level;
+    const nextIndex = this.findFirstSentenceIndex(level);
+    this.sentenceIndex = nextIndex;
+    this.sentence = TRAINING_SENTENCES[nextIndex];
     this.resetAttempt();
   }
 
@@ -553,6 +592,52 @@ struct Index {
       return false;
     }
     return this.result.referenceAudioUrl.length > 0;
+  }
+
+  private findFirstSentenceIndex(level: string): number {
+    for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
+      if (this.matchesLevel(TRAINING_SENTENCES[index], level)) {
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  private findNextSentenceIndex(currentIndex: number): number {
+    for (let offset = 1; offset <= TRAINING_SENTENCES.length; offset += 1) {
+      const nextIndex = (currentIndex + offset) % TRAINING_SENTENCES.length;
+      if (this.matchesLevel(TRAINING_SENTENCES[nextIndex], this.selectedLevel)) {
+        return nextIndex;
+      }
+    }
+    return 0;
+  }
+
+  private currentSentencePosition(): number {
+    let position = 0;
+    for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
+      if (this.matchesLevel(TRAINING_SENTENCES[index], this.selectedLevel)) {
+        position += 1;
+      }
+      if (index === this.sentenceIndex) {
+        return Math.max(position, 1);
+      }
+    }
+    return 1;
+  }
+
+  private filteredSentenceCount(): number {
+    let count = 0;
+    for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
+      if (this.matchesLevel(TRAINING_SENTENCES[index], this.selectedLevel)) {
+        count += 1;
+      }
+    }
+    return Math.max(count, 1);
+  }
+
+  private matchesLevel(sentence: TrainingSentence, level: string): boolean {
+    return level === LEVEL_ALL || sentence.level === level;
   }
 
   private isBusy(): boolean {
