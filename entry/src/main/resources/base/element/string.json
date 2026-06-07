@@ -2,19 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "English speaking practice"
+      "value": "英语口语练习"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Practice English pronunciation with guided feedback"
+      "value": "跟读英语句子，获得发音反馈"
     },
     {
       "name": "EntryAbility_label",
-      "value": "SpokenAssistant"
+      "value": "声练英语"
     },
     {
       "name": "microphone_permission_reason",
-      "value": "Record your spoken English so SpokenAssistant can evaluate pronunciation."
+      "value": "录制你的英语跟读音频，用于评估发音、流利度和语调。"
     }
   ]
 }

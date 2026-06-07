@@ -29,17 +29,17 @@ export default function handler(request: VercelRequest, response: VercelResponse
     fluencyScore: clamp(score - 3, 0, 100),
     pronunciationScore: clamp(score + 1, 0, 100),
     intonationScore: clamp(score - 5, 0, 100),
-    feedback: 'Good attempt. Keep your pace steady, stress the key words, and finish the sentence with a clear final sound.',
+    feedback: '这次跟读完成度不错。继续保持稳定语速，突出关键词，并把句尾音收清楚。',
     corrections: [
       {
         word: firstWord,
-        issue: 'The first word may sound rushed.',
-        suggestion: 'Start slightly slower and let the first consonant land clearly.'
+        issue: '第一个词听起来略微偏快。',
+        suggestion: '开头稍微放慢，让第一个辅音更清楚地落下来。'
       },
       {
-        word: 'sentence rhythm',
-        issue: 'Some phrases need a more natural rise and fall.',
-        suggestion: 'Listen to the model voice, then repeat the sentence with one short pause in the middle.'
+        word: '句子节奏',
+        issue: '部分短语的起伏还可以更自然。',
+        suggestion: '先听示范音频，再在句子中间加入一个短暂停顿后重复。'
       }
     ],
     referenceAudioUrl: ''

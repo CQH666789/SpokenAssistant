@@ -16,7 +16,7 @@ const COLOR_PRIMARY_DARK = '#9B4323';
 const COLOR_GOOD = '#2C8572';
 const COLOR_BLUE = '#3B6D8F';
 const COLOR_WARN_BG = '#FCE8DA';
-const LEVEL_ALL = 'All';
+const LEVEL_ALL = '全部';
 const LEVEL_FILTERS: string[] = [LEVEL_ALL, 'A2', 'B1', 'B2'];
 
 @Entry
@@ -79,11 +79,11 @@ struct Index {
   private Header() {
     Row() {
       Column({ space: 4 }) {
-        Text('SpokenAssistant')
+        Text('声练英语')
           .fontSize(24)
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_INK)
-        Text('English speaking practice')
+        Text('英语口语跟读训练')
           .fontSize(13)
           .fontColor(COLOR_MUTED)
       }
@@ -95,7 +95,7 @@ struct Index {
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_BLUE)
-        Text(this.selectedLevel === LEVEL_ALL ? 'All levels' : this.selectedLevel)
+        Text(this.selectedLevel === LEVEL_ALL ? '全部等级' : this.selectedLevel)
           .fontSize(11)
           .fontColor(COLOR_MUTED)
       }
@@ -107,9 +107,9 @@ struct Index {
   @Builder
   private ProgressStrip() {
     Row({ space: 10 }) {
-      this.StatTile('Done', `${this.completedCount}`)
-      this.StatTile('Best', this.bestScore > 0 ? `${this.bestScore}` : '-')
-      this.StatTile('Avg', this.averageScore > 0 ? `${this.averageScore}` : '-')
+      this.StatTile('完成', `${this.completedCount}`)
+      this.StatTile('最佳', this.bestScore > 0 ? `${this.bestScore}` : '-')
+      this.StatTile('平均', this.averageScore > 0 ? `${this.averageScore}` : '-')
     }
     .width('100%')
   }
@@ -159,7 +159,7 @@ struct Index {
   private SentenceCard() {
     Column({ space: 14 }) {
       Row() {
-        Text(this.sentence.focus.toUpperCase())
+        Text(this.focusLabel(this.sentence.focus))
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_PRIMARY_DARK)
@@ -180,7 +180,7 @@ struct Index {
         .fontColor(COLOR_INK)
         .width('100%')
 
-      Text('Read the sentence naturally. Focus on clarity, rhythm, and the highlighted speaking goal.')
+      Text('自然读出句子，注意清晰度、节奏和上方标出的练习重点。')
         .fontSize(14)
         .lineHeight(20)
         .fontColor(COLOR_MUTED)
@@ -237,7 +237,7 @@ struct Index {
         })
 
       if (this.errorMessage.length > 0 || this.stage === 'permissionDenied') {
-        Text(this.errorMessage || 'Microphone permission is required to record your voice.')
+        Text(this.errorMessage || '需要麦克风权限才能录制你的跟读音频。')
           .fontSize(13)
           .lineHeight(18)
           .fontColor(COLOR_PRIMARY_DARK)
@@ -274,16 +274,16 @@ struct Index {
                 .fontSize(28)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(COLOR_INK)
-              Text('score')
+              Text('分')
                 .fontSize(11)
                 .fontColor(COLOR_MUTED)
             }
           }
 
           Column({ space: 9 }) {
-            this.ScoreRow('Fluency', this.result.fluencyScore, COLOR_BLUE)
-            this.ScoreRow('Pronunciation', this.result.pronunciationScore, COLOR_GOOD)
-            this.ScoreRow('Intonation', this.result.intonationScore, COLOR_PRIMARY)
+            this.ScoreRow('流利度', this.result.fluencyScore, COLOR_BLUE)
+            this.ScoreRow('发音', this.result.pronunciationScore, COLOR_GOOD)
+            this.ScoreRow('语调', this.result.intonationScore, COLOR_PRIMARY)
           }
           .layoutWeight(1)
         }
@@ -323,11 +323,11 @@ struct Index {
       .width('100%')
     } else {
       Column({ space: 10 }) {
-        Text('Feedback will appear here')
+        Text('反馈会显示在这里')
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_INK)
-        Text('After you finish recording, SpokenAssistant checks clarity, fluency, and intonation.')
+        Text('录音完成后，声练英语会检查清晰度、流利度和语调。')
           .fontSize(14)
           .lineHeight(20)
           .fontColor(COLOR_MUTED)
@@ -373,7 +373,7 @@ struct Index {
           .fontWeight(FontWeight.Bold)
           .fontColor(COLOR_INK)
         Blank()
-        Text('Fix')
+        Text('建议')
           .fontSize(11)
           .fontColor(COLOR_PRIMARY_DARK)
       }
@@ -401,7 +401,7 @@ struct Index {
   @Builder
   private BottomBar() {
     Row({ space: 12 }) {
-      Button('Retry')
+      Button('重练')
         .height(48)
         .layoutWeight(1)
         .fontSize(15)
@@ -413,7 +413,7 @@ struct Index {
           this.resetAttempt();
         })
 
-      Button('Next sentence')
+      Button('下一句')
         .height(48)
         .layoutWeight(1)
         .fontSize(15)
@@ -446,7 +446,7 @@ struct Index {
     const allowed = await PermissionService.requestMicrophone(context);
     if (!allowed) {
       this.stage = 'permissionDenied';
-      this.errorMessage = 'Please allow microphone access to practice speaking.';
+      this.errorMessage = '请允许麦克风权限后再开始口语练习。';
       return;
     }
 
@@ -461,7 +461,7 @@ struct Index {
       this.startTimer();
     } catch (err) {
       this.stage = 'error';
-      this.errorMessage = `Recording could not start: ${JSON.stringify(err)}`;
+      this.errorMessage = `录音无法开始：${JSON.stringify(err)}`;
     }
   }
 
@@ -476,7 +476,7 @@ struct Index {
       this.stage = 'complete';
     } catch (err) {
       this.stage = 'error';
-      this.errorMessage = `Evaluation failed: ${JSON.stringify(err)}`;
+      this.errorMessage = `评估失败：${JSON.stringify(err)}`;
     }
   }
 
@@ -496,7 +496,7 @@ struct Index {
       await this.playback.play(this.result.referenceAudioUrl);
       this.isPlaying = true;
     } catch (err) {
-      this.errorMessage = `Model voice could not play: ${JSON.stringify(err)}`;
+      this.errorMessage = `示范音频无法播放：${JSON.stringify(err)}`;
       this.isPlaying = false;
     }
   }
@@ -554,37 +554,37 @@ struct Index {
   private statusTitle(): string {
     switch (this.stage) {
       case 'recording':
-        return 'Listening now';
+        return '正在聆听';
       case 'uploading':
-        return 'Uploading your take';
+        return '正在上传录音';
       case 'evaluating':
-        return 'Checking pronunciation';
+        return '正在分析发音';
       case 'complete':
-        return 'Feedback ready';
+        return '反馈已生成';
       case 'permissionDenied':
-        return 'Microphone blocked';
+        return '麦克风未授权';
       case 'error':
-        return 'Needs another try';
+        return '需要再试一次';
       default:
-        return 'Ready to practice';
+        return '准备开始练习';
     }
   }
 
   private primaryButtonText(): string {
     if (this.stage === 'recording') {
-      return 'Stop';
+      return '停止';
     }
     if (this.stage === 'uploading' || this.stage === 'evaluating') {
-      return 'Checking';
+      return '分析中';
     }
-    return 'Record';
+    return '录音';
   }
 
   private playbackButtonText(): string {
     if (!this.hasReferenceAudio()) {
-      return 'Model voice unavailable';
+      return '暂无示范音频';
     }
-    return this.isPlaying ? 'Pause model voice' : 'Play model voice';
+    return this.isPlaying ? '暂停示范音频' : '播放示范音频';
   }
 
   private hasReferenceAudio(): boolean {
@@ -638,6 +638,33 @@ struct Index {
 
   private matchesLevel(sentence: TrainingSentence, level: string): boolean {
     return level === LEVEL_ALL || sentence.level === level;
+  }
+
+  private focusLabel(focus: string): string {
+    switch (focus) {
+      case 'linking sounds':
+        return '连读';
+      case 'sentence rhythm':
+        return '句子节奏';
+      case 'question intonation':
+        return '疑问句语调';
+      case 'past tense endings':
+        return '过去式词尾';
+      case 'word stress':
+        return '单词重音';
+      case 'polite tone':
+        return '礼貌语气';
+      case 'vowel clarity':
+        return '元音清晰度';
+      case 'natural pauses':
+        return '自然停顿';
+      case 'multi-syllable words':
+        return '多音节词';
+      case 'connected speech':
+        return '连贯表达';
+      default:
+        return focus;
+    }
   }
 
   private isBusy(): boolean {

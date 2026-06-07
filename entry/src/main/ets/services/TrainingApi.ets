@@ -52,17 +52,17 @@ export class TrainingApi {
       fluencyScore: Math.max(70, base - 3),
       pronunciationScore: Math.max(72, base + 1),
       intonationScore: Math.max(68, base - 5),
-      feedback: 'Good pacing overall. Keep the stressed words clear and leave a small pause before the final phrase.',
+      feedback: '整体节奏不错。请继续把重读词读清楚，并在最后一个短语前留出轻微停顿。',
       corrections: [
         {
           word: sentence.text.split(' ')[0],
-          issue: 'The opening sound could be firmer.',
-          suggestion: 'Start with a cleaner consonant and avoid rushing into the next word.'
+          issue: '开头音可以更稳一些。',
+          suggestion: '先把第一个辅音发清楚，再自然连到下一个词。'
         },
         {
-          word: sentence.focus,
-          issue: 'This focus area needs one more deliberate pass.',
-          suggestion: 'Replay the model voice, then repeat the sentence at 80% speed.'
+          word: TrainingApi.focusLabel(sentence.focus),
+          issue: '这个练习重点还需要再刻意练一次。',
+          suggestion: '先听一遍示范音频，再用 80% 的速度重复这句话。'
         }
       ],
       referenceAudioUrl: ''
@@ -73,5 +73,32 @@ export class TrainingApi {
     return new Promise((resolve: () => void) => {
       setTimeout(resolve, ms);
     });
+  }
+
+  private static focusLabel(focus: string): string {
+    switch (focus) {
+      case 'linking sounds':
+        return '连读';
+      case 'sentence rhythm':
+        return '句子节奏';
+      case 'question intonation':
+        return '疑问句语调';
+      case 'past tense endings':
+        return '过去式词尾';
+      case 'word stress':
+        return '单词重音';
+      case 'polite tone':
+        return '礼貌语气';
+      case 'vowel clarity':
+        return '元音清晰度';
+      case 'natural pauses':
+        return '自然停顿';
+      case 'multi-syllable words':
+        return '多音节词';
+      case 'connected speech':
+        return '连贯表达';
+      default:
+        return focus;
+    }
   }
 }
