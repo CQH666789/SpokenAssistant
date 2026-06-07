@@ -27,6 +27,10 @@ struct Index {
   @State private result?: EvaluationResult = undefined;
   @State private errorMessage: string = '';
   @State private isPlaying: boolean = false;
+  @State private completedCount: number = 0;
+  @State private scoreTotal: number = 0;
+  @State private bestScore: number = 0;
+  @State private averageScore: number = 0;
 
   private recorder?: RecorderService;
   private playback: PlaybackService = new PlaybackService();
@@ -48,6 +52,7 @@ struct Index {
       Scroll() {
         Column({ space: 18 }) {
           this.Header()
+          this.ProgressStrip()
           this.SentenceCard()
           this.RecorderPanel()
           this.ResultPanel()
@@ -93,6 +98,35 @@ struct Index {
       .alignItems(HorizontalAlign.End)
     }
     .width('100%')
+  }
+
+  @Builder
+  private ProgressStrip() {
+    Row({ space: 10 }) {
+      this.StatTile('Done', `${this.completedCount}`)
+      this.StatTile('Best', this.bestScore > 0 ? `${this.bestScore}` : '-')
+      this.StatTile('Avg', this.averageScore > 0 ? `${this.averageScore}` : '-')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private StatTile(label: string, value: string) {
+    Column({ space: 3 }) {
+      Text(value)
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(COLOR_INK)
+      Text(label)
+        .fontSize(11)
+        .fontColor(COLOR_MUTED)
+    }
+    .justifyContent(FlexAlign.Center)
+    .height(72)
+    .layoutWeight(1)
+    .backgroundColor(COLOR_CARD)
+    .borderRadius(8)
+    .border({ width: 1, color: COLOR_LINE })
   }
 
   @Builder
@@ -242,14 +276,15 @@ struct Index {
         }
         .width('100%')
 
-        Button(this.isPlaying ? 'Pause model voice' : 'Play model voice')
+        Button(this.playbackButtonText())
           .height(48)
           .width('100%')
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor(COLOR_INK)
-          .backgroundColor('#EAE2D3')
+          .backgroundColor(this.hasReferenceAudio() ? '#EAE2D3' : '#F3EDE2')
           .borderRadius(6)
+          .enabled(this.hasReferenceAudio())
           .onClick(() => {
             void this.togglePlayback();
           })
@@ -411,6 +446,7 @@ struct Index {
       const recording: RecordingResult = await this.recorder!.stop();
       this.stage = 'evaluating';
       this.result = await TrainingApi.evaluate(this.sentence, recording);
+      this.recordScore(this.result.overallScore);
       this.stage = 'complete';
     } catch (err) {
       this.stage = 'error';
@@ -420,6 +456,9 @@ struct Index {
 
   private async togglePlayback(): Promise<void> {
     if (!this.result) {
+      return;
+    }
+    if (!this.hasReferenceAudio()) {
       return;
     }
     if (this.isPlaying) {
@@ -450,6 +489,13 @@ struct Index {
     this.errorMessage = '';
     this.isPlaying = false;
     this.playback.release();
+  }
+
+  private recordScore(score: number): void {
+    this.completedCount += 1;
+    this.scoreTotal += score;
+    this.bestScore = Math.max(this.bestScore, score);
+    this.averageScore = Math.round(this.scoreTotal / this.completedCount);
   }
 
   private startTimer(): void {
@@ -493,6 +539,20 @@ struct Index {
       return 'Checking';
     }
     return 'Record';
+  }
+
+  private playbackButtonText(): string {
+    if (!this.hasReferenceAudio()) {
+      return 'Model voice unavailable';
+    }
+    return this.isPlaying ? 'Pause model voice' : 'Play model voice';
+  }
+
+  private hasReferenceAudio(): boolean {
+    if (!this.result) {
+      return false;
+    }
+    return this.result.referenceAudioUrl.length > 0;
   }
 
   private isBusy(): boolean {
