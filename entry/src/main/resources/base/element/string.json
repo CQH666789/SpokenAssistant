@@ -2,15 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "English speaking practice"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "Practice English pronunciation with guided feedback"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "SpokenAssistant"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "Record your spoken English so SpokenAssistant can evaluate pronunciation."
     }
   ]
 }

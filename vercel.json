@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/pronunciation/evaluate.ts": {
+      "maxDuration": 30
+    }
+  }
+}

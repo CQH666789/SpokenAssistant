@@ -1,0 +1,11 @@
+{
+  "name": "spoken-assistant-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test:api": "node --test api/pronunciation/evaluate.test.mjs"
+  },
+  "devDependencies": {
+    "@vercel/node": "^5.5.0"
+  }
+}
