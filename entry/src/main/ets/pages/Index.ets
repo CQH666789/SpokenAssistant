@@ -302,6 +302,8 @@ struct Index {
         }
         .width('100%')
 
+        this.LanguageFeedbackPanel()
+
         Button(this.playbackButtonText())
           .height(48)
           .width('100%')
@@ -338,6 +340,57 @@ struct Index {
       .borderRadius(8)
       .width('100%')
     }
+  }
+
+  @Builder
+  private LanguageFeedbackPanel() {
+    if (this.result) {
+      Column({ space: 10 }) {
+        Row() {
+          Text('语言优化')
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_INK)
+          Blank()
+          Text('AI')
+            .fontSize(11)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_BLUE)
+        }
+        .width('100%')
+
+        this.LanguageSuggestionRow('语法纠正', this.result.languageFeedback.grammarCorrection)
+        this.LanguageSuggestionRow('地道表达', this.result.languageFeedback.betterExpression)
+
+        Text(this.result.languageFeedback.explanation)
+          .fontSize(13)
+          .lineHeight(18)
+          .fontColor(COLOR_MUTED)
+          .width('100%')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .padding(14)
+      .backgroundColor('#F6F0E5')
+      .borderRadius(6)
+      .width('100%')
+    }
+  }
+
+  @Builder
+  private LanguageSuggestionRow(label: string, text: string) {
+    Column({ space: 4 }) {
+      Text(label)
+        .fontSize(11)
+        .fontColor(COLOR_MUTED)
+      Text(text)
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(COLOR_INK)
+        .lineHeight(20)
+        .width('100%')
+    }
+    .alignItems(HorizontalAlign.Start)
+    .width('100%')
   }
 
   @Builder

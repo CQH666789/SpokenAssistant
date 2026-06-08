@@ -11,6 +11,12 @@ export interface PronunciationCorrection {
   suggestion: string;
 }
 
+export interface LanguageFeedback {
+  grammarCorrection: string;
+  betterExpression: string;
+  explanation: string;
+}
+
 export interface EvaluationResult {
   transcript: string;
   overallScore: number;
@@ -19,6 +25,7 @@ export interface EvaluationResult {
   intonationScore: number;
   feedback: string;
   corrections: PronunciationCorrection[];
+  languageFeedback: LanguageFeedback;
   referenceAudioUrl: string;
 }
 

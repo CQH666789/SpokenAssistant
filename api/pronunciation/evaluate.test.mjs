@@ -5,23 +5,23 @@ import vm from 'node:vm';
 
 const handler = await loadHandler();
 
-test('rejects non-POST requests', () => {
-  const response = invoke({ method: 'GET', body: {} });
+test('rejects non-POST requests', async () => {
+  const response = await invoke({ method: 'GET', body: {} });
 
   assert.equal(response.statusCode, 405);
   assert.equal(response.headers.Allow, 'POST');
   assert.equal(response.body.error, 'Method not allowed');
 });
 
-test('requires sentenceId and targetText', () => {
-  const response = invoke({ method: 'POST', body: { sentenceId: 'sample' } });
+test('requires sentenceId and targetText', async () => {
+  const response = await invoke({ method: 'POST', body: { sentenceId: 'sample' } });
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.body.error, 'sentenceId and targetText are required');
 });
 
-test('returns pronunciation feedback for a valid request', () => {
-  const response = invoke({
+test('returns pronunciation and language feedback for a valid request', async () => {
+  const response = await invoke({
     method: 'POST',
     body: {
       sentenceId: 'morning-coffee',
@@ -35,9 +35,12 @@ test('returns pronunciation feedback for a valid request', () => {
   assert.equal(response.body.overallScore, 86);
   assert.ok(Array.isArray(response.body.corrections));
   assert.equal(response.body.corrections[0].word, 'I');
+  assert.equal(response.body.languageFeedback.grammarCorrection, 'I usually drink a cup of coffee before my morning meeting.');
+  assert.equal(response.body.languageFeedback.betterExpression, 'I usually grab a coffee before my morning meeting.');
+  assert.ok(response.body.languageFeedback.explanation.includes('口语表达'));
 });
 
-function invoke(request) {
+async function invoke(request) {
   const response = {
     headers: {},
     statusCode: 200,
@@ -55,7 +58,7 @@ function invoke(request) {
     }
   };
 
-  handler(request, response);
+  await handler(request, response);
   return response;
 }
 
@@ -64,13 +67,22 @@ async function loadHandler() {
   const executable = source
     .replace(/^import type .*;\n/m, '')
     .replace(/interface\s+\w+\s+\{[\s\S]*?\}\n\n/g, '')
-    .replace(/export default function handler/, 'function handler')
+    .replace(/export default async function handler/, 'async function handler')
     .replace(/ as EvaluationPayload/g, '')
-    .replace(/: number/g, '')
+    .replace(/ as Partial<LanguageFeedback>/g, '')
+    .replace(/: Partial<LanguageFeedback>/g, '')
+    .replace(/ as \{\n\s+choices\?: Array<\{\n\s+message\?: \{\n\s+content\?: string\n\s+\}\n\s+\}>\n\s+\}/g, '')
+    .replace(/: Record<string, string>/g, '')
+    .replace(/: Promise<LanguageFeedback>/g, '')
+    .replace(/: LanguageFeedback/g, '')
     .replace(/: VercelRequest/g, '')
     .replace(/: VercelResponse/g, '')
+    .replace(/: number/g, '')
+    .replace(/: string/g, '')
+    .replace(/: unknown/g, '')
+    .replace(/: any/g, '')
     .concat('\nhandler;');
 
   const script = new vm.Script(executable, { filename: 'evaluate.ts' });
-  return script.runInNewContext({});
+  return script.runInNewContext({ process: { env: {} }, fetch });
 }

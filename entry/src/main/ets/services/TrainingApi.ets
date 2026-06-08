@@ -65,6 +65,11 @@ export class TrainingApi {
           suggestion: '先听一遍示范音频，再用 80% 的速度重复这句话。'
         }
       ],
+      languageFeedback: {
+        grammarCorrection: sentence.text,
+        betterExpression: TrainingApi.betterExpression(sentence),
+        explanation: '这句话语法正确。可以尝试更自然的表达，让语气更像日常口语。'
+      },
       referenceAudioUrl: ''
     };
   }
@@ -99,6 +104,33 @@ export class TrainingApi {
         return '连贯表达';
       default:
         return focus;
+    }
+  }
+
+  private static betterExpression(sentence: TrainingSentence): string {
+    switch (sentence.id) {
+      case 'morning-coffee':
+        return 'I usually grab a coffee before my morning meeting.';
+      case 'weather-plan':
+        return 'It is lovely outside, so we should go for a walk after lunch.';
+      case 'project-update':
+        return 'Could you give me a quick update on where the project timeline stands?';
+      case 'train-delay':
+        return 'Our train was delayed because of heavy rain near the station.';
+      case 'presentation':
+        return 'I am putting together a short presentation on customer feedback.';
+      case 'restaurant':
+        return 'Would you recommend this place for a quiet dinner?';
+      case 'remote-work':
+        return 'Working remotely gives me more flexibility throughout the week.';
+      case 'learning-goal':
+        return 'I want to speak more naturally and respond with confidence.';
+      case 'design-review':
+        return 'The design review helped us spot several important improvements.';
+      case 'travel-story':
+        return 'I still remember the little hotel we stayed at during our trip.';
+      default:
+        return sentence.text;
     }
   }
 }
