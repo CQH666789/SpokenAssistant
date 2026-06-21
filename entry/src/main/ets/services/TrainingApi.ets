@@ -1,11 +1,19 @@
 import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import fs from '@ohos.file.fs';
 import type { EvaluationResult, RecordingResult, TrainingSentence } from '../models/TrainingModels';
 
 const API_BASE_URL = 'https://spoken-assistant.vercel.app';
 const AUDIO_MIME_TYPE = 'audio/mp4';
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+const LOG_DOMAIN = 0x0001;
+const LOG_TAG = 'SpokenAssistant';
+const SIMULATOR_PROXY: http.HttpProxy = {
+  host: '10.0.2.2',
+  port: 7897,
+  exclusionList: []
+};
 
 export class TrainingApi {
   static async evaluate(sentence: TrainingSentence, recording: RecordingResult): Promise<EvaluationResult> {
@@ -14,26 +22,51 @@ export class TrainingApi {
     }
 
     const audioBase64 = TrainingApi.readAudioAsBase64(recording.path);
+    const payload = JSON.stringify({
+      sentenceId: sentence.id,
+      targetText: sentence.text,
+      locale: 'en-US',
+      audioPath: recording.path,
+      audioMimeType: AUDIO_MIME_TYPE,
+      audioBase64,
+      durationMs: recording.durationMs
+    });
+
+    try {
+      return await TrainingApi.requestEvaluation(payload, false);
+    } catch (err) {
+      if (!TrainingApi.isTimeoutError(err)) {
+        throw new Error(TrainingApi.errorMessage(err));
+      }
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Direct evaluation timed out, retrying with simulator proxy: %{public}s',
+        TrainingApi.errorMessage(err));
+      return await TrainingApi.requestEvaluation(payload, true);
+    }
+  }
+
+  private static async requestEvaluation(payload: string, useSimulatorProxy: boolean): Promise<EvaluationResult> {
+    const startedAt = Date.now();
     const request = http.createHttp();
     try {
-      const response = await request.request(`${API_BASE_URL}/api/pronunciation/evaluate`, {
+      const options: http.HttpRequestOptions = {
         method: http.RequestMethod.POST,
         expectDataType: http.HttpDataType.STRING,
         header: {
           'Content-Type': 'application/json'
         },
-        extraData: JSON.stringify({
-          sentenceId: sentence.id,
-          targetText: sentence.text,
-          locale: 'en-US',
-          audioPath: recording.path,
-          audioMimeType: AUDIO_MIME_TYPE,
-          audioBase64,
-          durationMs: recording.durationMs
-        }),
-        connectTimeout: 30000,
+        extraData: payload,
+        connectTimeout: useSimulatorProxy ? 30000 : 5000,
         readTimeout: 90000
-      });
+      };
+      if (useSimulatorProxy) {
+        options.usingProxy = SIMULATOR_PROXY;
+      }
+
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'Evaluation request start proxy=%{public}s payloadBytes=%{public}d',
+        useSimulatorProxy ? 'true' : 'false', payload.length);
+      const response = await request.request(`${API_BASE_URL}/api/pronunciation/evaluate`, options);
+      hilog.info(LOG_DOMAIN, LOG_TAG, 'Evaluation response proxy=%{public}s status=%{public}d elapsedMs=%{public}d',
+        useSimulatorProxy ? 'true' : 'false', response.responseCode, Date.now() - startedAt);
 
       if (response.responseCode < 200 || response.responseCode >= 300) {
         throw new Error(`服务端返回 ${response.responseCode}: ${response.result as string}`);
@@ -44,6 +77,15 @@ export class TrainingApi {
     } finally {
       request.destroy();
     }
+  }
+
+  private static isTimeoutError(err: Error | Object | string): boolean {
+    const message = TrainingApi.errorMessage(err);
+    return message.includes('2300028') || message.toLowerCase().includes('timeout');
+  }
+
+  private static errorMessage(err: Error | Object | string): string {
+    return err instanceof Error ? err.message : JSON.stringify(err);
   }
 
   private static readAudioAsBase64(path: string): string {
