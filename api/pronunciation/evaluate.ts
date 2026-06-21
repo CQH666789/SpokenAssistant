@@ -31,13 +31,6 @@ export default async function handler(request: VercelRequest, response: VercelRe
   const durationMs = Number(payload.durationMs || 0);
   const score = clamp(86 - (durationMs > 0 && durationMs < 1800 ? 8 : 0), 70, 96);
   const transcription = await resolveTranscript(payload);
-  if (transcription.ok === false) {
-    return response.status(502).json({
-      error: 'Speech transcription failed',
-      details: transcription.error
-    });
-  }
-
   const transcript = transcription.transcript;
   const firstWord = transcript.split(/\s+/)[0] || 'Opening';
   const languageFeedback = await createLanguageFeedback(payload.targetText, transcript);
@@ -48,7 +41,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     fluencyScore: clamp(score - 3, 0, 100),
     pronunciationScore: clamp(score + 1, 0, 100),
     intonationScore: clamp(score - 5, 0, 100),
-    feedback: '这次跟读完成度不错。继续保持稳定语速，突出关键词，并把句尾音收清楚。',
+    feedback: transcription.warning ||
+      '这次跟读完成度不错。继续保持稳定语速，突出关键词，并把句尾音收清楚。',
     corrections: [
       {
         word: firstWord,
@@ -70,25 +64,38 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-async function resolveTranscript(payload: EvaluationPayload): Promise<{ ok: true; transcript: string } | { ok: false; error: string }> {
+async function resolveTranscript(payload: EvaluationPayload): Promise<{ transcript: string; warning?: string }> {
   const spokenText = cleanText(payload.spokenText);
   if (spokenText) {
-    return { ok: true, transcript: spokenText };
+    return { transcript: spokenText };
   }
 
   const audioBase64 = cleanText(payload.audioBase64);
   if (!audioBase64) {
-    return { ok: true, transcript: payload.targetText || '' };
+    return { transcript: payload.targetText || '' };
   }
 
   try {
     const transcript = await transcribeAudio(audioBase64, payload.audioMimeType, payload.locale);
     if (!transcript) {
-      return { ok: false, error: 'Empty transcription result' };
+      return {
+        transcript: payload.targetText || '',
+        warning: '本次录音转写结果为空，已先按练习原句生成反馈。请确认模拟器麦克风有输入后再试一次。'
+      };
     }
-    return { ok: true, transcript };
+    return { transcript };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Unknown ASR error' };
+    console.error('Speech transcription failed', {
+      sentenceId: payload.sentenceId,
+      durationMs: payload.durationMs,
+      audioMimeType: payload.audioMimeType,
+      audioBase64Bytes: cleanText(payload.audioBase64).length,
+      error: error instanceof Error ? error.message : 'Unknown ASR error'
+    });
+    return {
+      transcript: payload.targetText || '',
+      warning: '本次录音转写失败，已先按练习原句生成反馈。请重试录音，或检查麦克风输入和网络代理。'
+    };
   }
 }
 
@@ -102,38 +109,23 @@ async function transcribeAudio(audioBase64: string, audioMimeType?: string, loca
   const mimeType = cleanText(audioMimeType) || 'audio/mp4';
   const dataUri = audioBase64.startsWith('data:') ? audioBase64 : `data:${mimeType};base64,${audioBase64}`;
   const language = (cleanText(locale) || 'en-US').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+  const requestBody = createAsrRequestBody(dataUri, language);
+  let result = await requestAsr(baseUrl, apiKey, requestBody);
 
-  const result = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: process.env.BAILIAN_ASR_MODEL || 'qwen3-asr-flash',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_audio',
-              input_audio: {
-                data: dataUri
-              }
-            }
-          ]
-        }
-      ],
-      stream: false,
-      asr_options: {
-        language,
-        enable_itn: false
-      }
-    })
-  }, 25000);
+  if (!result.ok && result.status === 400) {
+    const retryBody = createAsrRequestBody(dataUri);
+    result = await requestAsr(baseUrl, apiKey, retryBody);
+  }
 
   if (!result.ok) {
-    throw new Error(`ASR service returned ${result.status}`);
+    const errorText = await safeResponseText(result);
+    console.error('Qwen ASR request failed', {
+      status: result.status,
+      mimeType,
+      audioBase64Bytes: audioBase64.length,
+      errorText
+    });
+    throw new Error(`ASR service returned ${result.status}: ${truncate(errorText, 240)}`);
   }
 
   const data = await result.json() as {
@@ -144,6 +136,61 @@ async function transcribeAudio(audioBase64: string, audioMimeType?: string, loca
     }>
   };
   return cleanText(data.choices?.[0]?.message?.content);
+}
+
+function createAsrRequestBody(dataUri: string, language?: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: process.env.BAILIAN_ASR_MODEL || 'qwen3-asr-flash',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_audio',
+            input_audio: {
+              data: dataUri
+            }
+          }
+        ]
+      }
+    ],
+    stream: false,
+    asr_options: {
+      enable_itn: false
+    }
+  };
+
+  if (language) {
+    body.asr_options = {
+      language,
+      enable_itn: false
+    };
+  }
+
+  return body;
+}
+
+async function requestAsr(baseUrl: string, apiKey: string, body: Record<string, unknown>): Promise<Response> {
+  return fetchWithTimeout(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  }, 25000);
+}
+
+async function safeResponseText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (_) {
+    return '';
+  }
+}
+
+function truncate(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
 async function createLanguageFeedback(targetText: string, transcript: string): Promise<LanguageFeedback> {

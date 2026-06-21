@@ -56,7 +56,7 @@ test('uses spokenText when provided', async () => {
   assert.equal(response.body.languageFeedback.grammarCorrection, 'I usually drink coffee before my morning meeting.');
 });
 
-test('reports ASR failure when audio is provided but no API key is configured', async () => {
+test('falls back to target text when audio transcription fails', async () => {
   const response = await invoke({
     method: 'POST',
     body: {
@@ -68,9 +68,9 @@ test('reports ASR failure when audio is provided but no API key is configured', 
     }
   });
 
-  assert.equal(response.statusCode, 502);
-  assert.equal(response.body.error, 'Speech transcription failed');
-  assert.match(response.body.details, /BAILIAN_API_KEY/);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.transcript, 'I usually drink a cup of coffee before my morning meeting.');
+  assert.match(response.body.feedback, /转写失败/);
 });
 
 async function invoke(request) {
@@ -106,11 +106,15 @@ async function loadHandler() {
     .replace(/: EvaluationPayload/g, '')
     .replace(/: Partial<LanguageFeedback>/g, '')
     .replace(/: RequestInit/g, '')
-    .replace(/: Promise<\{ ok: true; transcript: string \} \| \{ ok: false; error: string \}>/g, '')
+    .replace(/: Response/g, '')
+    .replace(/: Promise<\{ transcript: string; warning\?: string \}>/g, '')
+    .replace(/: Promise<\{ transcript; warning\? \}>/g, '')
     .replace(/: Promise<Response>/g, '')
     .replace(/: Promise<string>/g, '')
+    .replace(/: Record<string, unknown>/g, '')
     .replace(/audioMimeType\?: string/g, 'audioMimeType')
     .replace(/locale\?: string/g, 'locale')
+    .replace(/language\?: string/g, 'language')
     .replace(/ as \{\n\s+choices\?: Array<\{\n\s+message\?: \{\n\s+content\?: string\n\s+\}\n\s+\}>\n\s+\}/g, '')
     .replace(/: Record<string, string>/g, '')
     .replace(/: Promise<LanguageFeedback>/g, '')
