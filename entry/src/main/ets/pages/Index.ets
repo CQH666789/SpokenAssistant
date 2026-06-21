@@ -668,7 +668,6 @@ struct Index {
     this.errorMessage = '';
     try {
       this.sentence = await TrainingApi.refreshSentence(this.selectedLevel, this.sentence.text);
-      this.sentenceIndex = this.findFirstSentenceIndex(this.sentence.level);
       this.resetAttempt();
     } catch (_) {
       const nextIndex = this.findRandomSentenceIndex(this.sentenceIndex);
@@ -846,10 +845,6 @@ struct Index {
   }
 
   private currentSentencePosition(): number {
-    if (!this.isCurrentSentenceStatic() && this.matchesLevel(this.sentence, this.selectedLevel)) {
-      return this.filteredSentenceCount();
-    }
-
     let position = 0;
     for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
       if (this.matchesLevel(TRAINING_SENTENCES[index], this.selectedLevel)) {
@@ -869,14 +864,7 @@ struct Index {
         count += 1;
       }
     }
-    if (!this.isCurrentSentenceStatic() && this.matchesLevel(this.sentence, this.selectedLevel)) {
-      count += 1;
-    }
     return Math.max(count, 1);
-  }
-
-  private isCurrentSentenceStatic(): boolean {
-    return TRAINING_SENTENCES[this.sentenceIndex].id === this.sentence.id;
   }
 
   private displayCompletedCount(): number {
