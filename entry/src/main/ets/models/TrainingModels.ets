@@ -34,6 +34,26 @@ export interface RecordingResult {
   durationMs: number;
 }
 
+export interface TrainingHistoryItem {
+  sentenceText: string;
+  level: string;
+  focus: string;
+  overallScore: number;
+  fluencyScore: number;
+  pronunciationScore: number;
+  intonationScore: number;
+  correctionWords: string[];
+  createdAt: number;
+}
+
+export interface CoachNextAction {
+  summary: string;
+  nextAction: string;
+  reason: string;
+  nextSentence: TrainingSentence;
+  tips: string[];
+}
+
 export type TrainingStage =
   'idle' |
   'permissionDenied' |

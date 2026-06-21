@@ -2,7 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import fs from '@ohos.file.fs';
-import type { EvaluationResult, RecordingResult, TrainingSentence } from '../models/TrainingModels';
+import type { CoachNextAction, EvaluationResult, RecordingResult, TrainingHistoryItem, TrainingSentence } from '../models/TrainingModels';
 
 const API_BASE_URL = 'https://spoken-assistant.vercel.app';
 const AUDIO_MIME_TYPE = 'audio/mpeg';
@@ -16,6 +16,32 @@ const SIMULATOR_PROXY: http.HttpProxy = {
 };
 
 export class TrainingApi {
+  static async coachNextAction(
+    sentence: TrainingSentence,
+    result: EvaluationResult,
+    recentHistory: TrainingHistoryItem[],
+    selectedLevel: string
+  ): Promise<CoachNextAction> {
+    const payload = JSON.stringify({
+      currentSentence: sentence,
+      currentResult: result,
+      recentHistory,
+      selectedLevel,
+      userGoal: '提升英语口语自然度和清晰度'
+    });
+
+    try {
+      return await TrainingApi.requestCoachNextAction(payload, false);
+    } catch (err) {
+      if (!TrainingApi.isTimeoutError(err)) {
+        throw new Error(TrainingApi.errorMessage(err));
+      }
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Direct coach request timed out, retrying with simulator proxy: %{public}s',
+        TrainingApi.errorMessage(err));
+      return await TrainingApi.requestCoachNextAction(payload, true);
+    }
+  }
+
   static async refreshSentence(level: string, excludeText: string): Promise<TrainingSentence> {
     const payload = JSON.stringify({
       level,
@@ -87,6 +113,38 @@ export class TrainingApi {
       const data = JSON.parse(response.result as string) as TrainingSentence;
       if (!data.text || !data.level || !data.focus) {
         throw new Error('服务端返回的句子格式不完整');
+      }
+      return data;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  private static async requestCoachNextAction(payload: string, useSimulatorProxy: boolean): Promise<CoachNextAction> {
+    const request = http.createHttp();
+    try {
+      const options: http.HttpRequestOptions = {
+        method: http.RequestMethod.POST,
+        expectDataType: http.HttpDataType.STRING,
+        header: {
+          'Content-Type': 'application/json'
+        },
+        extraData: payload,
+        connectTimeout: useSimulatorProxy ? 30000 : 5000,
+        readTimeout: 45000
+      };
+      if (useSimulatorProxy) {
+        options.usingProxy = SIMULATOR_PROXY;
+      }
+
+      const response = await request.request(`${API_BASE_URL}/api/coach/next-action`, options);
+      if (response.responseCode < 200 || response.responseCode >= 300) {
+        throw new Error(`服务端返回 ${response.responseCode}: ${response.result as string}`);
+      }
+
+      const data = JSON.parse(response.result as string) as CoachNextAction;
+      if (!data.summary || !data.reason || !data.nextSentence || !data.nextSentence.text) {
+        throw new Error('服务端返回的教练建议格式不完整');
       }
       return data;
     } finally {

@@ -1,10 +1,11 @@
 import type { Context } from '@kit.AbilityKit';
-import type { EvaluationResult, PronunciationCorrection, RecordingResult, TrainingSentence, TrainingStage } from '../models/TrainingModels';
+import type { CoachNextAction, EvaluationResult, PronunciationCorrection, RecordingResult, TrainingHistoryItem, TrainingSentence, TrainingStage } from '../models/TrainingModels';
 import { TRAINING_SENTENCES } from '../models/TrainingModels';
 import { PermissionService } from '../services/PermissionService';
 import { PlaybackService } from '../services/PlaybackService';
 import { RecorderService } from '../services/RecorderService';
 import { TrainingApi } from '../services/TrainingApi';
+import { TrainingHistoryService } from '../services/TrainingHistoryService';
 
 const COLOR_BG = '#F6F2EA';
 const COLOR_INK = '#201F1B';
@@ -47,9 +48,13 @@ struct Index {
   @State private visibleCompletedCount: number = 0;
   @State private visibleBestScore: number = 0;
   @State private visibleAverageScore: number = 0;
+  @State private coachAction?: CoachNextAction = undefined;
+  @State private isLoadingCoach: boolean = false;
+  @State private coachErrorMessage: string = '';
 
   private recorder?: RecorderService;
   private playback?: PlaybackService;
+  private recentHistory: TrainingHistoryItem[] = [];
   private timerId: number = -1;
 
   aboutToAppear(): void {
@@ -60,6 +65,7 @@ struct Index {
       this.isPlaying = false;
       this.isPlaybackLoading = false;
     });
+    void this.loadTrainingHistory(context);
   }
 
   aboutToDisappear(): void {
@@ -78,6 +84,7 @@ struct Index {
           this.SentenceCard()
           this.RecorderPanel()
           this.ResultPanel()
+          this.CoachPanel()
         }
         .padding({ left: 20, right: 20, top: 22, bottom: 118 })
         .width('100%')
@@ -423,6 +430,86 @@ struct Index {
   }
 
   @Builder
+  private CoachPanel() {
+    if (this.isLoadingCoach || this.coachAction || this.coachErrorMessage.length > 0) {
+      Column({ space: 12 }) {
+        Row() {
+          Text('AI 教练建议')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_INK)
+          Blank()
+          Text(this.isLoadingCoach ? '规划中' : 'Agent')
+            .fontSize(11)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(COLOR_BLUE)
+        }
+        .width('100%')
+
+        if (this.isLoadingCoach) {
+          Text('正在结合本次表现和最近训练记录，规划下一步练习。')
+            .fontSize(14)
+            .lineHeight(20)
+            .fontColor(COLOR_MUTED)
+            .width('100%')
+        } else if (this.coachAction) {
+          Text(this.coachAction.summary)
+            .fontSize(14)
+            .lineHeight(20)
+            .fontColor(COLOR_INK)
+            .width('100%')
+
+          Text(this.coachAction.reason)
+            .fontSize(13)
+            .lineHeight(19)
+            .fontColor(COLOR_MUTED)
+            .width('100%')
+
+          Column({ space: 6 }) {
+            ForEach(this.coachAction.tips, (tip: string) => {
+              Text(`- ${tip}`)
+                .fontSize(13)
+                .lineHeight(18)
+                .fontColor(COLOR_INK)
+                .width('100%')
+            }, (tip: string) => tip)
+          }
+          .width('100%')
+
+          Column({ space: 5 }) {
+            Text('下一句')
+              .fontSize(11)
+              .fontColor(COLOR_MUTED)
+            Text(this.coachAction.nextSentence.text)
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .lineHeight(21)
+              .fontColor(COLOR_INK)
+              .width('100%')
+          }
+          .alignItems(HorizontalAlign.Start)
+          .padding(12)
+          .backgroundColor('#F6F0E5')
+          .borderRadius(6)
+          .width('100%')
+        } else {
+          Text(this.coachErrorMessage)
+            .fontSize(13)
+            .lineHeight(18)
+            .fontColor(COLOR_PRIMARY_DARK)
+            .width('100%')
+        }
+      }
+      .alignItems(HorizontalAlign.Start)
+      .padding(18)
+      .backgroundColor(COLOR_CARD)
+      .borderRadius(8)
+      .border({ width: 1, color: COLOR_LINE })
+      .width('100%')
+    }
+  }
+
+  @Builder
   private LanguageFeedbackPanel() {
     if (this.result) {
       Column({ space: 10 }) {
@@ -546,7 +633,7 @@ struct Index {
           this.resetAttempt();
         })
 
-      Button('下一句')
+      Button(this.nextButtonText())
         .height(48)
         .layoutWeight(1)
         .fontSize(15)
@@ -604,9 +691,12 @@ struct Index {
       this.stage = 'uploading';
       const recording: RecordingResult = await this.recorder!.stop();
       this.stage = 'evaluating';
-      this.result = await TrainingApi.evaluate(this.sentence, recording);
-      this.recordScore(this.result.overallScore);
+      const evaluatedSentence = this.sentence;
+      const evaluation = await TrainingApi.evaluate(evaluatedSentence, recording);
+      this.result = evaluation;
+      this.recordScore(evaluation.overallScore);
       this.stage = 'complete';
+      await this.saveHistoryAndLoadCoach(evaluatedSentence, evaluation);
     } catch (err) {
       this.stage = 'error';
       this.errorMessage = `评估失败：${this.formatError(err)}`;
@@ -654,7 +744,7 @@ struct Index {
 
     const nextIndex = this.findNextSentenceIndex(this.sentenceIndex);
     this.sentenceIndex = nextIndex;
-    this.sentence = TRAINING_SENTENCES[nextIndex];
+    this.sentence = this.coachAction ? this.coachAction.nextSentence : TRAINING_SENTENCES[nextIndex];
     this.resetAttempt();
     this.refreshVisibleStats();
   }
@@ -702,6 +792,8 @@ struct Index {
     this.elapsedSeconds = 0;
     this.result = undefined;
     this.errorMessage = '';
+    this.coachAction = undefined;
+    this.coachErrorMessage = '';
     this.isPlaying = false;
     this.isPlaybackLoading = false;
     this.playback?.release();
@@ -735,6 +827,34 @@ struct Index {
       this.b2BestScore = Math.max(this.b2BestScore, score);
     }
     this.refreshVisibleStats();
+  }
+
+  private async loadTrainingHistory(context: Context): Promise<void> {
+    try {
+      this.recentHistory = await TrainingHistoryService.load(context);
+    } catch (_) {
+      this.recentHistory = [];
+    }
+  }
+
+  private async saveHistoryAndLoadCoach(sentence: TrainingSentence, result: EvaluationResult): Promise<void> {
+    const context = getContext(this) as Context;
+    try {
+      this.recentHistory = await TrainingHistoryService.append(context, sentence, result);
+    } catch (_) {
+      // Training can continue even if local memory fails.
+    }
+
+    this.isLoadingCoach = true;
+    this.coachAction = undefined;
+    this.coachErrorMessage = '';
+    try {
+      this.coachAction = await TrainingApi.coachNextAction(sentence, result, this.recentHistory, this.selectedLevel);
+    } catch (err) {
+      this.coachErrorMessage = `教练建议暂时不可用：${this.formatError(err)}`;
+    } finally {
+      this.isLoadingCoach = false;
+    }
   }
 
   private startTimer(): void {
@@ -778,6 +898,13 @@ struct Index {
       return '分析中';
     }
     return '录音';
+  }
+
+  private nextButtonText(): string {
+    if (this.isLoadingCoach) {
+      return '规划中';
+    }
+    return this.coachAction ? '智能下一句' : '下一句';
   }
 
   private refreshSentenceButtonText(): string {
@@ -948,7 +1075,7 @@ struct Index {
   }
 
   private isBusy(): boolean {
-    return this.stage === 'uploading' || this.stage === 'evaluating' || this.isRefreshingSentence;
+    return this.stage === 'uploading' || this.stage === 'evaluating' || this.isRefreshingSentence || this.isLoadingCoach;
   }
 
   private canChangeSentence(): boolean {
