@@ -24,7 +24,7 @@ export class RecorderService {
       // The directory may already exist.
     }
 
-    this.recordingPath = `${dir}/spoken-${Date.now()}.m4a`;
+    this.recordingPath = `${dir}/spoken-${Date.now()}.mp3`;
     const file = fs.openSync(
       this.recordingPath,
       fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC
@@ -34,9 +34,9 @@ export class RecorderService {
     const profile: media.AVRecorderProfile = {
       audioBitrate: 64000,
       audioChannels: 1,
-      audioCodec: media.CodecMimeType.AUDIO_AAC,
+      audioCodec: media.CodecMimeType.AUDIO_MP3,
       audioSampleRate: 44100,
-      fileFormat: media.ContainerFormatType.CFT_MPEG_4A
+      fileFormat: media.ContainerFormatType.CFT_MP3
     };
 
     const config: media.AVRecorderConfig = {

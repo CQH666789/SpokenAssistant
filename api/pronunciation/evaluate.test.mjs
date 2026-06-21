@@ -56,7 +56,7 @@ test('uses spokenText when provided', async () => {
   assert.equal(response.body.languageFeedback.grammarCorrection, 'I usually drink coffee before my morning meeting.');
 });
 
-test('falls back to target text when audio transcription fails', async () => {
+test('reports ASR failure when audio transcription fails', async () => {
   const response = await invoke({
     method: 'POST',
     body: {
@@ -68,9 +68,9 @@ test('falls back to target text when audio transcription fails', async () => {
     }
   });
 
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.body.transcript, 'I usually drink a cup of coffee before my morning meeting.');
-  assert.match(response.body.feedback, /转写失败/);
+  assert.equal(response.statusCode, 502);
+  assert.equal(response.body.error, 'Speech transcription failed');
+  assert.match(response.body.details, /BAILIAN_API_KEY/);
 });
 
 async function invoke(request) {
@@ -107,8 +107,6 @@ async function loadHandler() {
     .replace(/: Partial<LanguageFeedback>/g, '')
     .replace(/: RequestInit/g, '')
     .replace(/: Response/g, '')
-    .replace(/: Promise<\{ transcript: string; warning\?: string \}>/g, '')
-    .replace(/: Promise<\{ transcript; warning\? \}>/g, '')
     .replace(/: Promise<Response>/g, '')
     .replace(/: Promise<string>/g, '')
     .replace(/: Record<string, unknown>/g, '')

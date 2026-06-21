@@ -5,7 +5,7 @@ import fs from '@ohos.file.fs';
 import type { EvaluationResult, RecordingResult, TrainingSentence } from '../models/TrainingModels';
 
 const API_BASE_URL = 'https://spoken-assistant.vercel.app';
-const AUDIO_MIME_TYPE = 'audio/mp4';
+const AUDIO_MIME_TYPE = 'audio/mpeg';
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const LOG_DOMAIN = 0x0001;
 const LOG_TAG = 'SpokenAssistant';
