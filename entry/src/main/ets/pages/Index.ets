@@ -42,6 +42,9 @@ struct Index {
   aboutToAppear(): void {
     const context = getContext(this) as Context;
     this.recorder = new RecorderService(context);
+    this.playback.setOnComplete(() => {
+      this.isPlaying = false;
+    });
   }
 
   aboutToDisappear(): void {
