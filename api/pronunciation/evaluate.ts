@@ -61,21 +61,22 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 async function createLanguageFeedback(targetText: string, transcript: string): Promise<LanguageFeedback> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.BAILIAN_API_KEY || process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
     return fallbackLanguageFeedback(targetText);
   }
 
   try {
-    const result = await fetch('https://api.openai.com/v1/responses', {
+    const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const result = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_LANGUAGE_MODEL || 'gpt-5.4-mini',
-        input: [
+        model: process.env.BAILIAN_LANGUAGE_MODEL || 'qwen-plus',
+        messages: [
           {
             role: 'system',
             content: [
@@ -95,9 +96,9 @@ async function createLanguageFeedback(targetText: string, transcript: string): P
             })
           }
         ],
-        text: {
-          format: {
-            type: 'json_schema',
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
             name: 'language_feedback',
             strict: true,
             schema: {
@@ -105,22 +106,14 @@ async function createLanguageFeedback(targetText: string, transcript: string): P
               additionalProperties: false,
               required: ['grammarCorrection', 'betterExpression', 'explanation'],
               properties: {
-                grammarCorrection: {
-                  type: 'string',
-                  description: 'The learner sentence corrected for grammar in English.'
-                },
-                betterExpression: {
-                  type: 'string',
-                  description: 'A more idiomatic natural English expression.'
-                },
-                explanation: {
-                  type: 'string',
-                  description: 'A concise Chinese explanation under 60 Chinese characters.'
-                }
+                grammarCorrection: { type: 'string' },
+                betterExpression: { type: 'string' },
+                explanation: { type: 'string' }
               }
             }
           }
-        }
+        },
+        temperature: 0.3
       })
     });
 
@@ -128,31 +121,19 @@ async function createLanguageFeedback(targetText: string, transcript: string): P
       return fallbackLanguageFeedback(targetText);
     }
 
-    const data = await result.json();
-    const content = readResponseText(data);
+    const data = await result.json() as {
+      choices?: Array<{
+        message?: {
+          content?: string
+        }
+      }>
+    };
+    const content = data.choices?.[0]?.message?.content || '';
     const parsed = JSON.parse(content) as Partial<LanguageFeedback>;
     return normalizeLanguageFeedback(parsed, targetText);
   } catch (_) {
     return fallbackLanguageFeedback(targetText);
   }
-}
-
-function readResponseText(data: any): string {
-  if (typeof data.output_text === 'string') {
-    return data.output_text;
-  }
-
-  const output = Array.isArray(data.output) ? data.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const part of content) {
-      if (typeof part.text === 'string') {
-        return part.text;
-      }
-    }
-  }
-
-  return '';
 }
 
 function normalizeLanguageFeedback(value: Partial<LanguageFeedback>, targetText: string): LanguageFeedback {
