@@ -44,6 +44,9 @@ struct Index {
   @State private b2ScoreTotal: number = 0;
   @State private b2BestScore: number = 0;
   @State private selectedLevel: string = LEVEL_ALL;
+  @State private visibleCompletedCount: number = 0;
+  @State private visibleBestScore: number = 0;
+  @State private visibleAverageScore: number = 0;
 
   private recorder?: RecorderService;
   private playback?: PlaybackService;
@@ -122,9 +125,9 @@ struct Index {
   @Builder
   private ProgressStrip() {
     Row({ space: 10 }) {
-      this.StatTile('完成', `${this.displayCompletedCount()}`)
-      this.StatTile('最佳', this.displayBestScore() > 0 ? `${this.displayBestScore()}` : '-')
-      this.StatTile('平均', this.displayAverageScore() > 0 ? `${this.displayAverageScore()}` : '-')
+      this.StatTile('完成', `${this.visibleCompletedCount}`)
+      this.StatTile('最佳', this.visibleBestScore > 0 ? `${this.visibleBestScore}` : '-')
+      this.StatTile('平均', this.visibleAverageScore > 0 ? `${this.visibleAverageScore}` : '-')
     }
     .width('100%')
   }
@@ -615,6 +618,7 @@ struct Index {
     this.sentenceIndex = nextIndex;
     this.sentence = TRAINING_SENTENCES[nextIndex];
     this.resetAttempt();
+    this.refreshVisibleStats();
   }
 
   private async refreshSentence(): Promise<void> {
@@ -648,6 +652,7 @@ struct Index {
     }
 
     this.selectedLevel = level;
+    this.refreshVisibleStats();
     const nextIndex = this.findFirstSentenceIndex(level);
     this.sentenceIndex = nextIndex;
     this.sentence = TRAINING_SENTENCES[nextIndex];
@@ -670,25 +675,29 @@ struct Index {
     this.totalScoreTotal += score;
     this.totalBestScore = Math.max(this.totalBestScore, score);
 
-    if (this.sentence.level === 'A2') {
+    const scoreLevel = this.selectedLevel === LEVEL_ALL ? this.sentence.level : this.selectedLevel;
+    if (scoreLevel === 'A2') {
       this.a2CompletedCount += 1;
       this.a2ScoreTotal += score;
       this.a2BestScore = Math.max(this.a2BestScore, score);
+      this.refreshVisibleStats();
       return;
     }
 
-    if (this.sentence.level === 'B1') {
+    if (scoreLevel === 'B1') {
       this.b1CompletedCount += 1;
       this.b1ScoreTotal += score;
       this.b1BestScore = Math.max(this.b1BestScore, score);
+      this.refreshVisibleStats();
       return;
     }
 
-    if (this.sentence.level === 'B2') {
+    if (scoreLevel === 'B2') {
       this.b2CompletedCount += 1;
       this.b2ScoreTotal += score;
       this.b2BestScore = Math.max(this.b2BestScore, score);
     }
+    this.refreshVisibleStats();
   }
 
   private startTimer(): void {
@@ -873,6 +882,12 @@ struct Index {
       return Math.round(this.b2ScoreTotal / completedCount);
     }
     return Math.round(this.totalScoreTotal / completedCount);
+  }
+
+  private refreshVisibleStats(): void {
+    this.visibleCompletedCount = this.displayCompletedCount();
+    this.visibleBestScore = this.displayBestScore();
+    this.visibleAverageScore = this.displayAverageScore();
   }
 
   private matchesLevel(sentence: TrainingSentence, level: string): boolean {
