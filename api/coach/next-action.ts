@@ -46,6 +46,8 @@ interface CoachNextAction {
   reason: string;
   nextSentence: TrainingSentence;
   tips: string[];
+  source: 'model' | 'mixed' | 'fallback';
+  fallbackReason?: string;
 }
 
 const LEVELS = ['A2', 'B1', 'B2'];
@@ -77,17 +79,18 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = await createCoachNextAction(payload);
     return response.status(200).json(action);
   } catch (error) {
+    const fallbackReason = error instanceof Error ? error.message : 'Unknown coach error';
     console.error('Coach agent failed', {
-      error: error instanceof Error ? error.message : 'Unknown coach error'
+      error: fallbackReason
     });
-    return response.status(200).json(fallbackCoachNextAction(payload));
+    return response.status(200).json(fallbackCoachNextAction(payload, fallbackReason));
   }
 }
 
 async function createCoachNextAction(payload: CoachPayload): Promise<CoachNextAction> {
   const apiKey = process.env.BAILIAN_API_KEY || process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
-    return fallbackCoachNextAction(payload);
+    return fallbackCoachNextAction(payload, 'BAILIAN_API_KEY is not configured');
   }
 
   const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -128,7 +131,10 @@ async function requestCoach(
           '你需要根据本次练习结果和最近训练历史，判断学习者下一步最该练什么。',
           '输出必须具体、简短、可执行。',
           '只输出 JSON，不要 Markdown。',
-          'nextSentence 必须是新的英文跟读句，8 到 16 个词，level 为 A2、B1 或 B2，focus 必须来自允许列表。'
+          'nextSentence 必须是新的英文跟读句，8 到 16 个词，level 为 A2、B1 或 B2，focus 必须来自允许列表。',
+          '必须完整返回 summary、nextAction、reason、nextSentence、tips。',
+          'summary 和 reason 必须结合具体分数、focus 或历史记录，不要使用泛化模板。',
+          'tips 返回 2 到 3 条，必须针对下一句或薄弱项。'
         ].join('\n')
       },
       {
@@ -139,7 +145,18 @@ async function requestCoach(
           allowedFocusValues: FOCUS_VALUES,
           currentSentence: payload.currentSentence,
           currentResult: payload.currentResult,
-          recentHistory: sanitizeHistory(payload.recentHistory || [])
+          recentHistory: sanitizeHistory(payload.recentHistory || []),
+          returnJsonShape: {
+            summary: '中文，一句话总结当前薄弱点',
+            nextAction: 'practice_sentence',
+            reason: '中文，说明为什么下一步练这个',
+            nextSentence: {
+              text: '英文新句子',
+              level: 'A2|B1|B2',
+              focus: 'one allowed focus value'
+            },
+            tips: ['中文建议1', '中文建议2']
+          }
         })
       }
     ],
@@ -178,6 +195,11 @@ function parseCoachAction(content: string): Partial<CoachNextAction> {
 function normalizeCoachAction(value: Partial<CoachNextAction>, payload: CoachPayload): CoachNextAction {
   const fallback = fallbackCoachNextAction(payload);
   const sentence = (value.nextSentence || {}) as Partial<TrainingSentence>;
+  const hasModelSummary = Boolean(cleanText(value.summary));
+  const hasModelReason = Boolean(cleanText(value.reason));
+  const hasModelSentence = Boolean(cleanText(sentence.text));
+  const hasModelTips = Array.isArray(value.tips) && value.tips.some((tip) => cleanText(tip));
+  const source = hasModelSummary && hasModelReason && hasModelSentence && hasModelTips ? 'model' : 'mixed';
   const requestedLevel = normalizeLevel(payload.selectedLevel);
   const nextLevel = LEVELS.includes(cleanText(sentence.level))
     ? cleanText(sentence.level)
@@ -198,11 +220,13 @@ function normalizeCoachAction(value: Partial<CoachNextAction>, payload: CoachPay
     },
     tips: Array.isArray(value.tips)
       ? value.tips.map((tip) => cleanText(tip)).filter(Boolean).slice(0, 3)
-      : fallback.tips
+      : fallback.tips,
+    source,
+    fallbackReason: source === 'mixed' ? 'Model response missed required coach fields; some fields used local fallback.' : undefined
   };
 }
 
-function fallbackCoachNextAction(payload: CoachPayload): CoachNextAction {
+function fallbackCoachNextAction(payload: CoachPayload, fallbackReason = 'Coach model unavailable; local fallback used.'): CoachNextAction {
   const result = payload.currentResult || {};
   const sentence = payload.currentSentence || {
     text: 'Could you give me a quick update on the project timeline?',
@@ -228,7 +252,9 @@ function fallbackCoachNextAction(payload: CoachPayload): CoachNextAction {
       '先慢速读一遍，把目标音读完整。',
       '第二遍恢复正常语速，注意句尾不要拖长。',
       '录音前可以先默读一次，确认重读词。'
-    ]
+    ],
+    source: 'fallback',
+    fallbackReason
   };
 }
 

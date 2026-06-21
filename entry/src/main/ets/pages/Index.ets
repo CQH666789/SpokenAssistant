@@ -439,10 +439,10 @@ struct Index {
             .fontWeight(FontWeight.Bold)
             .fontColor(COLOR_INK)
           Blank()
-          Text(this.isLoadingCoach ? '规划中' : 'Agent')
+          Text(this.isLoadingCoach ? '规划中' : this.coachSourceLabel())
             .fontSize(11)
             .fontWeight(FontWeight.Bold)
-            .fontColor(COLOR_BLUE)
+            .fontColor(this.coachAction?.source === 'fallback' ? COLOR_PRIMARY_DARK : COLOR_BLUE)
         }
         .width('100%')
 
@@ -453,6 +453,18 @@ struct Index {
             .fontColor(COLOR_MUTED)
             .width('100%')
         } else if (this.coachAction) {
+          Row() {
+            Text(this.coachSourceLabel())
+              .fontSize(11)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.coachAction.source === 'fallback' ? COLOR_PRIMARY_DARK : COLOR_BLUE)
+              .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+              .backgroundColor(this.coachAction.source === 'fallback' ? COLOR_WARN_BG : '#E8F0F3')
+              .borderRadius(12)
+            Blank()
+          }
+          .width('100%')
+
           Text(this.coachAction.summary)
             .fontSize(14)
             .lineHeight(20)
@@ -492,6 +504,14 @@ struct Index {
           .backgroundColor('#F6F0E5')
           .borderRadius(6)
           .width('100%')
+
+          if (this.coachAction.fallbackReason && this.coachAction.source !== 'model') {
+            Text(this.coachAction.fallbackReason)
+              .fontSize(11)
+              .lineHeight(16)
+              .fontColor(COLOR_MUTED)
+              .width('100%')
+          }
         } else {
           Text(this.coachErrorMessage)
             .fontSize(13)
@@ -905,6 +925,19 @@ struct Index {
       return '规划中';
     }
     return this.coachAction ? '智能下一句' : '下一句';
+  }
+
+  private coachSourceLabel(): string {
+    if (!this.coachAction) {
+      return 'Agent';
+    }
+    if (this.coachAction.source === 'fallback') {
+      return '兜底';
+    }
+    if (this.coachAction.source === 'mixed') {
+      return '混合';
+    }
+    return 'Agent';
   }
 
   private refreshSentenceButtonText(): string {

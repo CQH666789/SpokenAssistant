@@ -52,6 +52,8 @@ export interface CoachNextAction {
   reason: string;
   nextSentence: TrainingSentence;
   tips: string[];
+  source: string;
+  fallbackReason?: string;
 }
 
 export type TrainingStage =
