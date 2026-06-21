@@ -31,10 +31,18 @@ struct Index {
   @State private isPlaying: boolean = false;
   @State private isPlaybackLoading: boolean = false;
   @State private isRefreshingSentence: boolean = false;
-  @State private completedCount: number = 0;
-  @State private scoreTotal: number = 0;
-  @State private bestScore: number = 0;
-  @State private averageScore: number = 0;
+  @State private totalCompletedCount: number = 0;
+  @State private totalScoreTotal: number = 0;
+  @State private totalBestScore: number = 0;
+  @State private a2CompletedCount: number = 0;
+  @State private a2ScoreTotal: number = 0;
+  @State private a2BestScore: number = 0;
+  @State private b1CompletedCount: number = 0;
+  @State private b1ScoreTotal: number = 0;
+  @State private b1BestScore: number = 0;
+  @State private b2CompletedCount: number = 0;
+  @State private b2ScoreTotal: number = 0;
+  @State private b2BestScore: number = 0;
   @State private selectedLevel: string = LEVEL_ALL;
 
   private recorder?: RecorderService;
@@ -114,9 +122,9 @@ struct Index {
   @Builder
   private ProgressStrip() {
     Row({ space: 10 }) {
-      this.StatTile('完成', `${this.completedCount}`)
-      this.StatTile('最佳', this.bestScore > 0 ? `${this.bestScore}` : '-')
-      this.StatTile('平均', this.averageScore > 0 ? `${this.averageScore}` : '-')
+      this.StatTile('完成', `${this.displayCompletedCount()}`)
+      this.StatTile('最佳', this.displayBestScore() > 0 ? `${this.displayBestScore()}` : '-')
+      this.StatTile('平均', this.displayAverageScore() > 0 ? `${this.displayAverageScore()}` : '-')
     }
     .width('100%')
   }
@@ -153,7 +161,7 @@ struct Index {
           .backgroundColor(this.selectedLevel === level ? COLOR_BLUE : COLOR_CARD)
           .borderRadius(6)
           .border({ width: 1, color: this.selectedLevel === level ? COLOR_BLUE : COLOR_LINE })
-          .enabled(!this.isBusy())
+          .enabled(this.canChangeSentence())
           .onClick(() => {
             this.selectLevel(level);
           })
@@ -492,7 +500,7 @@ struct Index {
         .fontColor(COLOR_INK)
         .backgroundColor('#EAE2D3')
         .borderRadius(6)
-        .enabled(!this.isBusy())
+        .enabled(this.canChangeSentence())
         .onClick(() => {
           this.resetAttempt();
         })
@@ -505,7 +513,7 @@ struct Index {
         .fontColor(Color.White)
         .backgroundColor(COLOR_GOOD)
         .borderRadius(6)
-        .enabled(!this.isBusy())
+        .enabled(this.canChangeSentence())
         .onClick(() => {
           this.nextSentence();
         })
@@ -599,6 +607,10 @@ struct Index {
   }
 
   private nextSentence(): void {
+    if (!this.canChangeSentence()) {
+      return;
+    }
+
     const nextIndex = this.findNextSentenceIndex(this.sentenceIndex);
     this.sentenceIndex = nextIndex;
     this.sentence = TRAINING_SENTENCES[nextIndex];
@@ -614,6 +626,7 @@ struct Index {
     this.errorMessage = '';
     try {
       this.sentence = await TrainingApi.refreshSentence(this.selectedLevel, this.sentence.text);
+      this.sentenceIndex = this.findFirstSentenceIndex(this.sentence.level);
       this.resetAttempt();
     } catch (_) {
       const nextIndex = this.findRandomSentenceIndex(this.sentenceIndex);
@@ -626,6 +639,10 @@ struct Index {
   }
 
   private selectLevel(level: string): void {
+    if (!this.canChangeSentence()) {
+      return;
+    }
+
     if (this.selectedLevel === level) {
       return;
     }
@@ -649,10 +666,29 @@ struct Index {
   }
 
   private recordScore(score: number): void {
-    this.completedCount += 1;
-    this.scoreTotal += score;
-    this.bestScore = Math.max(this.bestScore, score);
-    this.averageScore = Math.round(this.scoreTotal / this.completedCount);
+    this.totalCompletedCount += 1;
+    this.totalScoreTotal += score;
+    this.totalBestScore = Math.max(this.totalBestScore, score);
+
+    if (this.sentence.level === 'A2') {
+      this.a2CompletedCount += 1;
+      this.a2ScoreTotal += score;
+      this.a2BestScore = Math.max(this.a2BestScore, score);
+      return;
+    }
+
+    if (this.sentence.level === 'B1') {
+      this.b1CompletedCount += 1;
+      this.b1ScoreTotal += score;
+      this.b1BestScore = Math.max(this.b1BestScore, score);
+      return;
+    }
+
+    if (this.sentence.level === 'B2') {
+      this.b2CompletedCount += 1;
+      this.b2ScoreTotal += score;
+      this.b2BestScore = Math.max(this.b2BestScore, score);
+    }
   }
 
   private startTimer(): void {
@@ -763,6 +799,10 @@ struct Index {
   }
 
   private currentSentencePosition(): number {
+    if (!this.isCurrentSentenceStatic() && this.matchesLevel(this.sentence, this.selectedLevel)) {
+      return this.filteredSentenceCount();
+    }
+
     let position = 0;
     for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
       if (this.matchesLevel(TRAINING_SENTENCES[index], this.selectedLevel)) {
@@ -782,7 +822,57 @@ struct Index {
         count += 1;
       }
     }
+    if (!this.isCurrentSentenceStatic() && this.matchesLevel(this.sentence, this.selectedLevel)) {
+      count += 1;
+    }
     return Math.max(count, 1);
+  }
+
+  private isCurrentSentenceStatic(): boolean {
+    return TRAINING_SENTENCES[this.sentenceIndex].id === this.sentence.id;
+  }
+
+  private displayCompletedCount(): number {
+    if (this.selectedLevel === 'A2') {
+      return this.a2CompletedCount;
+    }
+    if (this.selectedLevel === 'B1') {
+      return this.b1CompletedCount;
+    }
+    if (this.selectedLevel === 'B2') {
+      return this.b2CompletedCount;
+    }
+    return this.totalCompletedCount;
+  }
+
+  private displayBestScore(): number {
+    if (this.selectedLevel === 'A2') {
+      return this.a2BestScore;
+    }
+    if (this.selectedLevel === 'B1') {
+      return this.b1BestScore;
+    }
+    if (this.selectedLevel === 'B2') {
+      return this.b2BestScore;
+    }
+    return this.totalBestScore;
+  }
+
+  private displayAverageScore(): number {
+    const completedCount = this.displayCompletedCount();
+    if (completedCount === 0) {
+      return 0;
+    }
+    if (this.selectedLevel === 'A2') {
+      return Math.round(this.a2ScoreTotal / completedCount);
+    }
+    if (this.selectedLevel === 'B1') {
+      return Math.round(this.b1ScoreTotal / completedCount);
+    }
+    if (this.selectedLevel === 'B2') {
+      return Math.round(this.b2ScoreTotal / completedCount);
+    }
+    return Math.round(this.totalScoreTotal / completedCount);
   }
 
   private matchesLevel(sentence: TrainingSentence, level: string): boolean {
@@ -820,8 +910,12 @@ struct Index {
     return this.stage === 'uploading' || this.stage === 'evaluating' || this.isRefreshingSentence;
   }
 
-  private canRefreshSentence(): boolean {
+  private canChangeSentence(): boolean {
     return this.stage !== 'recording' && !this.isBusy() && !this.isPlaybackLoading;
+  }
+
+  private canRefreshSentence(): boolean {
+    return this.canChangeSentence();
   }
 
   private formattedTime(): string {
