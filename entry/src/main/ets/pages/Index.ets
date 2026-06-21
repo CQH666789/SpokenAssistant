@@ -36,12 +36,13 @@ struct Index {
   @State private selectedLevel: string = LEVEL_ALL;
 
   private recorder?: RecorderService;
-  private playback: PlaybackService = new PlaybackService();
+  private playback?: PlaybackService;
   private timerId: number = -1;
 
   aboutToAppear(): void {
     const context = getContext(this) as Context;
     this.recorder = new RecorderService(context);
+    this.playback = new PlaybackService(context);
     this.playback.setOnComplete(() => {
       this.isPlaying = false;
     });
@@ -50,7 +51,7 @@ struct Index {
   aboutToDisappear(): void {
     this.stopTimer();
     this.recorder?.release();
-    this.playback.release();
+    this.playback?.release();
   }
 
   build() {
@@ -544,12 +545,12 @@ struct Index {
       return;
     }
     if (this.isPlaying) {
-      await this.playback.pause();
+      await this.playback?.pause();
       this.isPlaying = false;
       return;
     }
     try {
-      await this.playback.play(this.result.referenceAudioUrl);
+      await this.playback?.play(this.result.referenceAudioUrl);
       this.isPlaying = true;
     } catch (err) {
       this.errorMessage = `示范音频无法播放：${this.formatError(err)}`;
@@ -590,7 +591,7 @@ struct Index {
     this.result = undefined;
     this.errorMessage = '';
     this.isPlaying = false;
-    this.playback.release();
+    this.playback?.release();
   }
 
   private recordScore(score: number): void {
