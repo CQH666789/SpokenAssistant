@@ -29,6 +29,7 @@ struct Index {
   @State private result?: EvaluationResult = undefined;
   @State private errorMessage: string = '';
   @State private isPlaying: boolean = false;
+  @State private isPlaybackLoading: boolean = false;
   @State private completedCount: number = 0;
   @State private scoreTotal: number = 0;
   @State private bestScore: number = 0;
@@ -45,6 +46,7 @@ struct Index {
     this.playback = new PlaybackService(context);
     this.playback.setOnComplete(() => {
       this.isPlaying = false;
+      this.isPlaybackLoading = false;
     });
   }
 
@@ -308,18 +310,29 @@ struct Index {
 
         this.LanguageFeedbackPanel()
 
-        Button(this.playbackButtonText())
-          .height(48)
-          .width('100%')
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(COLOR_INK)
-          .backgroundColor(this.hasReferenceAudio() ? '#EAE2D3' : '#F3EDE2')
-          .borderRadius(6)
-          .enabled(this.hasReferenceAudio())
-          .onClick(() => {
-            void this.togglePlayback();
-          })
+        Column({ space: 8 }) {
+          Button(this.playbackButtonText())
+            .height(48)
+            .width('100%')
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(COLOR_INK)
+            .backgroundColor(this.playbackButtonColor())
+            .borderRadius(6)
+            .enabled(this.canUsePlaybackButton())
+            .onClick(() => {
+              void this.togglePlayback();
+            })
+
+          if (this.isPlaybackLoading) {
+            Text('首次播放需要先缓存音频，请稍等。')
+              .fontSize(12)
+              .fontColor(COLOR_MUTED)
+              .textAlign(TextAlign.Center)
+              .width('100%')
+          }
+        }
+        .width('100%')
       }
       .alignItems(HorizontalAlign.Start)
       .padding(20)
@@ -544,16 +557,22 @@ struct Index {
     if (!this.hasReferenceAudio()) {
       return;
     }
+    if (this.isPlaybackLoading) {
+      return;
+    }
     if (this.isPlaying) {
       await this.playback?.pause();
       this.isPlaying = false;
       return;
     }
     try {
+      this.isPlaybackLoading = true;
       await this.playback?.play(this.result.referenceAudioUrl);
+      this.isPlaybackLoading = false;
       this.isPlaying = true;
     } catch (err) {
       this.errorMessage = `示范音频无法播放：${this.formatError(err)}`;
+      this.isPlaybackLoading = false;
       this.isPlaying = false;
     }
   }
@@ -591,6 +610,7 @@ struct Index {
     this.result = undefined;
     this.errorMessage = '';
     this.isPlaying = false;
+    this.isPlaybackLoading = false;
     this.playback?.release();
   }
 
@@ -648,7 +668,21 @@ struct Index {
     if (!this.hasReferenceAudio()) {
       return '暂无示范音频';
     }
+    if (this.isPlaybackLoading) {
+      return '正在加载示范音频';
+    }
     return this.isPlaying ? '暂停示范音频' : '播放示范音频';
+  }
+
+  private playbackButtonColor(): string {
+    if (this.isPlaybackLoading) {
+      return '#E0D6C6';
+    }
+    return this.hasReferenceAudio() ? '#EAE2D3' : '#F3EDE2';
+  }
+
+  private canUsePlaybackButton(): boolean {
+    return this.hasReferenceAudio() && !this.isPlaybackLoading;
   }
 
   private hasReferenceAudio(): boolean {
