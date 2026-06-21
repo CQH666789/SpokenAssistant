@@ -16,6 +16,24 @@ const SIMULATOR_PROXY: http.HttpProxy = {
 };
 
 export class TrainingApi {
+  static async refreshSentence(level: string, excludeText: string): Promise<TrainingSentence> {
+    const payload = JSON.stringify({
+      level,
+      excludeText
+    });
+
+    try {
+      return await TrainingApi.requestSentenceRefresh(payload, false);
+    } catch (err) {
+      if (!TrainingApi.isTimeoutError(err)) {
+        throw new Error(TrainingApi.errorMessage(err));
+      }
+      hilog.warn(LOG_DOMAIN, LOG_TAG, 'Direct sentence refresh timed out, retrying with simulator proxy: %{public}s',
+        TrainingApi.errorMessage(err));
+      return await TrainingApi.requestSentenceRefresh(payload, true);
+    }
+  }
+
   static async evaluate(sentence: TrainingSentence, recording: RecordingResult): Promise<EvaluationResult> {
     if (!API_BASE_URL) {
       return TrainingApi.mockEvaluate(sentence, recording);
@@ -41,6 +59,38 @@ export class TrainingApi {
       hilog.warn(LOG_DOMAIN, LOG_TAG, 'Direct evaluation timed out, retrying with simulator proxy: %{public}s',
         TrainingApi.errorMessage(err));
       return await TrainingApi.requestEvaluation(payload, true);
+    }
+  }
+
+  private static async requestSentenceRefresh(payload: string, useSimulatorProxy: boolean): Promise<TrainingSentence> {
+    const request = http.createHttp();
+    try {
+      const options: http.HttpRequestOptions = {
+        method: http.RequestMethod.POST,
+        expectDataType: http.HttpDataType.STRING,
+        header: {
+          'Content-Type': 'application/json'
+        },
+        extraData: payload,
+        connectTimeout: useSimulatorProxy ? 30000 : 5000,
+        readTimeout: 45000
+      };
+      if (useSimulatorProxy) {
+        options.usingProxy = SIMULATOR_PROXY;
+      }
+
+      const response = await request.request(`${API_BASE_URL}/api/sentences/refresh`, options);
+      if (response.responseCode < 200 || response.responseCode >= 300) {
+        throw new Error(`服务端返回 ${response.responseCode}: ${response.result as string}`);
+      }
+
+      const data = JSON.parse(response.result as string) as TrainingSentence;
+      if (!data.text || !data.level || !data.focus) {
+        throw new Error('服务端返回的句子格式不完整');
+      }
+      return data;
+    } finally {
+      request.destroy();
     }
   }
 

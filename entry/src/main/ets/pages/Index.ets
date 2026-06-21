@@ -30,6 +30,7 @@ struct Index {
   @State private errorMessage: string = '';
   @State private isPlaying: boolean = false;
   @State private isPlaybackLoading: boolean = false;
+  @State private isRefreshingSentence: boolean = false;
   @State private completedCount: number = 0;
   @State private scoreTotal: number = 0;
   @State private bestScore: number = 0;
@@ -164,7 +165,7 @@ struct Index {
   @Builder
   private SentenceCard() {
     Column({ space: 14 }) {
-      Row() {
+      Row({ space: 8 }) {
         Text(this.focusLabel(this.sentence.focus))
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
@@ -173,6 +174,19 @@ struct Index {
           .backgroundColor(COLOR_WARN_BG)
           .borderRadius(14)
         Blank()
+        Button(this.refreshSentenceButtonText())
+          .height(30)
+          .width(88)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.canRefreshSentence() ? COLOR_BLUE : COLOR_MUTED)
+          .backgroundColor('#F3EDE2')
+          .borderRadius(6)
+          .border({ width: 1, color: COLOR_LINE })
+          .enabled(this.canRefreshSentence())
+          .onClick(() => {
+            void this.refreshSentence();
+          })
         Text(this.sentence.level)
           .fontSize(12)
           .fontColor(COLOR_MUTED)
@@ -591,6 +605,26 @@ struct Index {
     this.resetAttempt();
   }
 
+  private async refreshSentence(): Promise<void> {
+    if (!this.canRefreshSentence()) {
+      return;
+    }
+
+    this.isRefreshingSentence = true;
+    this.errorMessage = '';
+    try {
+      this.sentence = await TrainingApi.refreshSentence(this.selectedLevel, this.sentence.text);
+      this.resetAttempt();
+    } catch (_) {
+      const nextIndex = this.findRandomSentenceIndex(this.sentenceIndex);
+      this.sentenceIndex = nextIndex;
+      this.sentence = TRAINING_SENTENCES[nextIndex];
+      this.resetAttempt();
+    } finally {
+      this.isRefreshingSentence = false;
+    }
+  }
+
   private selectLevel(level: string): void {
     if (this.selectedLevel === level) {
       return;
@@ -664,6 +698,10 @@ struct Index {
     return '录音';
   }
 
+  private refreshSentenceButtonText(): string {
+    return this.isRefreshingSentence ? '刷新中' : '刷新句子';
+  }
+
   private playbackButtonText(): string {
     if (!this.hasReferenceAudio()) {
       return '暂无示范音频';
@@ -709,6 +747,19 @@ struct Index {
       }
     }
     return 0;
+  }
+
+  private findRandomSentenceIndex(currentIndex: number): number {
+    const candidates: number[] = [];
+    for (let index = 0; index < TRAINING_SENTENCES.length; index += 1) {
+      if (this.matchesLevel(TRAINING_SENTENCES[index], this.selectedLevel) && index !== currentIndex) {
+        candidates.push(index);
+      }
+    }
+    if (candidates.length === 0) {
+      return this.findNextSentenceIndex(currentIndex);
+    }
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   private currentSentencePosition(): number {
@@ -766,7 +817,11 @@ struct Index {
   }
 
   private isBusy(): boolean {
-    return this.stage === 'uploading' || this.stage === 'evaluating';
+    return this.stage === 'uploading' || this.stage === 'evaluating' || this.isRefreshingSentence;
+  }
+
+  private canRefreshSentence(): boolean {
+    return this.stage !== 'recording' && !this.isBusy() && !this.isPlaybackLoading;
   }
 
   private formattedTime(): string {
