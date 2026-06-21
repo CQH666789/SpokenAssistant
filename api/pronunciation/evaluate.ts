@@ -55,7 +55,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
   }
   const firstWord = transcript.split(/\s+/)[0] || 'Opening';
   const pronunciationFeedback = await createPronunciationFeedback(payload.targetText, transcript, durationMs);
-  const languageFeedback = await createLanguageFeedback(payload.targetText, transcript);
+  const [languageFeedback, referenceAudioUrl] = await Promise.all([
+    createLanguageFeedback(payload.targetText, transcript),
+    createReferenceAudio(payload.targetText, request)
+  ]);
 
   return response.status(200).json({
     transcript,
@@ -68,7 +71,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       fallbackCorrection(firstWord, payload.targetText)
     ],
     languageFeedback,
-    referenceAudioUrl: ''
+    referenceAudioUrl
   });
 }
 
@@ -197,6 +200,71 @@ async function safeResponseText(response: Response): Promise<string> {
 
 function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+async function createReferenceAudio(text: string, request: VercelRequest): Promise<string> {
+  const apiKey = process.env.BAILIAN_API_KEY || process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) {
+    return '';
+  }
+
+  try {
+    const baseUrl = process.env.BAILIAN_DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/api/v1';
+    const result = await fetchWithTimeout(`${baseUrl}/services/aigc/multimodal-generation/generation`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.BAILIAN_TTS_MODEL || 'qwen3-tts-flash',
+        input: {
+          text,
+          voice: process.env.BAILIAN_TTS_VOICE || 'Cherry',
+          language_type: 'English'
+        }
+      })
+    }, 25000);
+
+    if (!result.ok) {
+      const errorText = await safeResponseText(result);
+      console.error('Qwen TTS request failed', {
+        status: result.status,
+        errorText
+      });
+      return '';
+    }
+
+    const data = await result.json() as {
+      output?: {
+        audio?: {
+          url?: string
+        }
+      }
+    };
+    return buildReferenceAudioUrl(cleanText(data.output?.audio?.url), request);
+  } catch (error) {
+    console.error('Reference audio generation failed', {
+      error: error instanceof Error ? error.message : 'Unknown TTS error'
+    });
+    return '';
+  }
+}
+
+function buildReferenceAudioUrl(audioUrl: string, request: VercelRequest): string {
+  if (!audioUrl) {
+    return '';
+  }
+
+  const hostHeader = request.headers?.host;
+  const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  if (!host) {
+    return audioUrl;
+  }
+
+  const protocolHeader = request.headers?.['x-forwarded-proto'];
+  const protocol = Array.isArray(protocolHeader) ? protocolHeader[0] : protocolHeader;
+  return `${protocol || 'https'}://${host}/api/reference-audio?source=${encodeURIComponent(audioUrl)}`;
 }
 
 async function createPronunciationFeedback(

@@ -119,6 +119,7 @@ async function loadHandler() {
     .replace(/locale\?: string/g, 'locale')
     .replace(/language\?: string/g, 'language')
     .replace(/ as \{\n\s+choices\?: Array<\{\n\s+message\?: \{\n\s+content\?: string\n\s+\}\n\s+\}>\n\s+\}/g, '')
+    .replace(/ as \{\n\s+output\?: \{\n\s+audio\?: \{\n\s+url\?: string\n\s+\}\n\s+\}\n\s+\}/g, '')
     .replace(/: Record<string, string>/g, '')
     .replace(/: Promise<LanguageFeedback>/g, '')
     .replace(/: LanguageFeedback/g, '')
