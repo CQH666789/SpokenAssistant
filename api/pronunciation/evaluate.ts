@@ -6,6 +6,8 @@ interface EvaluationPayload {
   spokenText?: string;
   locale?: string;
   audioPath?: string;
+  audioBase64?: string;
+  audioMimeType?: string;
   durationMs?: number;
 }
 
@@ -28,7 +30,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
   const durationMs = Number(payload.durationMs || 0);
   const score = clamp(86 - (durationMs > 0 && durationMs < 1800 ? 8 : 0), 70, 96);
-  const transcript = payload.spokenText || payload.targetText;
+  const transcription = await resolveTranscript(payload);
+  if (transcription.ok === false) {
+    return response.status(502).json({
+      error: 'Speech transcription failed',
+      details: transcription.error
+    });
+  }
+
+  const transcript = transcription.transcript;
   const firstWord = transcript.split(/\s+/)[0] || 'Opening';
   const languageFeedback = await createLanguageFeedback(payload.targetText, transcript);
 
@@ -60,15 +70,91 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+async function resolveTranscript(payload: EvaluationPayload): Promise<{ ok: true; transcript: string } | { ok: false; error: string }> {
+  const spokenText = cleanText(payload.spokenText);
+  if (spokenText) {
+    return { ok: true, transcript: spokenText };
+  }
+
+  const audioBase64 = cleanText(payload.audioBase64);
+  if (!audioBase64) {
+    return { ok: true, transcript: payload.targetText || '' };
+  }
+
+  try {
+    const transcript = await transcribeAudio(audioBase64, payload.audioMimeType, payload.locale);
+    if (!transcript) {
+      return { ok: false, error: 'Empty transcription result' };
+    }
+    return { ok: true, transcript };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown ASR error' };
+  }
+}
+
+async function transcribeAudio(audioBase64: string, audioMimeType?: string, locale?: string): Promise<string> {
+  const apiKey = process.env.BAILIAN_API_KEY || process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) {
+    throw new Error('BAILIAN_API_KEY is not configured');
+  }
+
+  const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const mimeType = cleanText(audioMimeType) || 'audio/mp4';
+  const dataUri = audioBase64.startsWith('data:') ? audioBase64 : `data:${mimeType};base64,${audioBase64}`;
+  const language = (cleanText(locale) || 'en-US').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+
+  const result = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: process.env.BAILIAN_ASR_MODEL || 'qwen3-asr-flash',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_audio',
+              input_audio: {
+                data: dataUri
+              }
+            }
+          ]
+        }
+      ],
+      stream: false,
+      asr_options: {
+        language,
+        enable_itn: false
+      }
+    })
+  }, 25000);
+
+  if (!result.ok) {
+    throw new Error(`ASR service returned ${result.status}`);
+  }
+
+  const data = await result.json() as {
+    choices?: Array<{
+      message?: {
+        content?: string
+      }
+    }>
+  };
+  return cleanText(data.choices?.[0]?.message?.content);
+}
+
 async function createLanguageFeedback(targetText: string, transcript: string): Promise<LanguageFeedback> {
   const apiKey = process.env.BAILIAN_API_KEY || process.env.DASHSCOPE_API_KEY;
   if (!apiKey) {
-    return fallbackLanguageFeedback(targetText);
+    return fallbackLanguageFeedback(targetText, transcript);
   }
 
   try {
     const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    const result = await fetch(`${baseUrl}/chat/completions`, {
+    const result = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -115,10 +201,10 @@ async function createLanguageFeedback(targetText: string, transcript: string): P
         },
         temperature: 0.3
       })
-    });
+    }, 20000);
 
     if (!result.ok) {
-      return fallbackLanguageFeedback(targetText);
+      return fallbackLanguageFeedback(targetText, transcript);
     }
 
     const data = await result.json() as {
@@ -130,14 +216,27 @@ async function createLanguageFeedback(targetText: string, transcript: string): P
     };
     const content = data.choices?.[0]?.message?.content || '';
     const parsed = JSON.parse(content) as Partial<LanguageFeedback>;
-    return normalizeLanguageFeedback(parsed, targetText);
+    return normalizeLanguageFeedback(parsed, targetText, transcript);
   } catch (_) {
-    return fallbackLanguageFeedback(targetText);
+    return fallbackLanguageFeedback(targetText, transcript);
   }
 }
 
-function normalizeLanguageFeedback(value: Partial<LanguageFeedback>, targetText: string): LanguageFeedback {
-  const fallback = fallbackLanguageFeedback(targetText);
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeLanguageFeedback(value: Partial<LanguageFeedback>, targetText: string, transcript: string): LanguageFeedback {
+  const fallback = fallbackLanguageFeedback(targetText, transcript);
   return {
     grammarCorrection: cleanText(value.grammarCorrection) || fallback.grammarCorrection,
     betterExpression: cleanText(value.betterExpression) || fallback.betterExpression,
@@ -149,9 +248,9 @@ function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function fallbackLanguageFeedback(targetText: string): LanguageFeedback {
+function fallbackLanguageFeedback(targetText: string, transcript = targetText): LanguageFeedback {
   return {
-    grammarCorrection: targetText,
+    grammarCorrection: transcript || targetText,
     betterExpression: makeBetterExpression(targetText),
     explanation: '语法整体没有明显问题。可以换成更自然的口语表达，让句子更地道。'
   };

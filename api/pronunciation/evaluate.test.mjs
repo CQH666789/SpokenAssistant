@@ -40,6 +40,39 @@ test('returns pronunciation and language feedback for a valid request', async ()
   assert.ok(response.body.languageFeedback.explanation.includes('口语表达'));
 });
 
+test('uses spokenText when provided', async () => {
+  const response = await invoke({
+    method: 'POST',
+    body: {
+      sentenceId: 'morning-coffee',
+      targetText: 'I usually drink a cup of coffee before my morning meeting.',
+      spokenText: 'I usually drink coffee before my morning meeting.',
+      durationMs: 2400
+    }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.transcript, 'I usually drink coffee before my morning meeting.');
+  assert.equal(response.body.languageFeedback.grammarCorrection, 'I usually drink coffee before my morning meeting.');
+});
+
+test('reports ASR failure when audio is provided but no API key is configured', async () => {
+  const response = await invoke({
+    method: 'POST',
+    body: {
+      sentenceId: 'morning-coffee',
+      targetText: 'I usually drink a cup of coffee before my morning meeting.',
+      audioBase64: 'AAAA',
+      audioMimeType: 'audio/mp4',
+      durationMs: 2400
+    }
+  });
+
+  assert.equal(response.statusCode, 502);
+  assert.equal(response.body.error, 'Speech transcription failed');
+  assert.match(response.body.details, /BAILIAN_API_KEY/);
+});
+
 async function invoke(request) {
   const response = {
     headers: {},
@@ -70,7 +103,14 @@ async function loadHandler() {
     .replace(/export default async function handler/, 'async function handler')
     .replace(/ as EvaluationPayload/g, '')
     .replace(/ as Partial<LanguageFeedback>/g, '')
+    .replace(/: EvaluationPayload/g, '')
     .replace(/: Partial<LanguageFeedback>/g, '')
+    .replace(/: RequestInit/g, '')
+    .replace(/: Promise<\{ ok: true; transcript: string \} \| \{ ok: false; error: string \}>/g, '')
+    .replace(/: Promise<Response>/g, '')
+    .replace(/: Promise<string>/g, '')
+    .replace(/audioMimeType\?: string/g, 'audioMimeType')
+    .replace(/locale\?: string/g, 'locale')
     .replace(/ as \{\n\s+choices\?: Array<\{\n\s+message\?: \{\n\s+content\?: string\n\s+\}\n\s+\}>\n\s+\}/g, '')
     .replace(/: Record<string, string>/g, '')
     .replace(/: Promise<LanguageFeedback>/g, '')

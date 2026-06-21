@@ -1,7 +1,11 @@
 import { http } from '@kit.NetworkKit';
+import { util } from '@kit.ArkTS';
+import fs from '@ohos.file.fs';
 import type { EvaluationResult, RecordingResult, TrainingSentence } from '../models/TrainingModels';
 
 const API_BASE_URL = 'https://spoken-assistant.vercel.app';
+const AUDIO_MIME_TYPE = 'audio/mp4';
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
 export class TrainingApi {
   static async evaluate(sentence: TrainingSentence, recording: RecordingResult): Promise<EvaluationResult> {
@@ -9,6 +13,7 @@ export class TrainingApi {
       return TrainingApi.mockEvaluate(sentence, recording);
     }
 
+    const audioBase64 = TrainingApi.readAudioAsBase64(recording.path);
     const request = http.createHttp();
     try {
       const response = await request.request(`${API_BASE_URL}/api/pronunciation/evaluate`, {
@@ -22,20 +27,43 @@ export class TrainingApi {
           targetText: sentence.text,
           locale: 'en-US',
           audioPath: recording.path,
+          audioMimeType: AUDIO_MIME_TYPE,
+          audioBase64,
           durationMs: recording.durationMs
         }),
-        connectTimeout: 15000,
-        readTimeout: 30000
+        connectTimeout: 30000,
+        readTimeout: 90000
       });
 
       if (response.responseCode < 200 || response.responseCode >= 300) {
-        throw new Error(`Server returned ${response.responseCode}`);
+        throw new Error(`服务端返回 ${response.responseCode}: ${response.result as string}`);
       }
 
       const data = JSON.parse(response.result as string) as EvaluationResult;
       return data;
     } finally {
       request.destroy();
+    }
+  }
+
+  private static readAudioAsBase64(path: string): string {
+    const stat = fs.statSync(path);
+    if (stat.size <= 0) {
+      throw new Error('Recording file is empty');
+    }
+    if (stat.size > MAX_AUDIO_BYTES) {
+      throw new Error('Recording file is too large');
+    }
+
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      const buffer = new ArrayBuffer(stat.size);
+      const bytesRead = fs.readSync(file.fd, buffer, { length: stat.size });
+      const bytes = new Uint8Array(buffer, 0, bytesRead);
+      const base64 = new util.Base64Helper();
+      return base64.encodeToStringSync(bytes);
+    } finally {
+      fs.closeSync(file.fd);
     }
   }
 

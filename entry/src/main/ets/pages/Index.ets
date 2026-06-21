@@ -514,7 +514,7 @@ struct Index {
       this.startTimer();
     } catch (err) {
       this.stage = 'error';
-      this.errorMessage = `录音无法开始：${JSON.stringify(err)}`;
+      this.errorMessage = `录音无法开始：${this.formatError(err)}`;
     }
   }
 
@@ -529,7 +529,7 @@ struct Index {
       this.stage = 'complete';
     } catch (err) {
       this.stage = 'error';
-      this.errorMessage = `评估失败：${JSON.stringify(err)}`;
+      this.errorMessage = `评估失败：${this.formatError(err)}`;
     }
   }
 
@@ -549,9 +549,16 @@ struct Index {
       await this.playback.play(this.result.referenceAudioUrl);
       this.isPlaying = true;
     } catch (err) {
-      this.errorMessage = `示范音频无法播放：${JSON.stringify(err)}`;
+      this.errorMessage = `示范音频无法播放：${this.formatError(err)}`;
       this.isPlaying = false;
     }
+  }
+
+  private formatError(err: Error | Object | string): string {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return JSON.stringify(err);
   }
 
   private nextSentence(): void {
