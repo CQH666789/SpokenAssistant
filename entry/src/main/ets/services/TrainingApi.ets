@@ -1,7 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import type { EvaluationResult, RecordingResult, TrainingSentence } from '../models/TrainingModels';
 
-const API_BASE_URL = '';
+const API_BASE_URL = 'https://spoken-assistant.vercel.app';
 
 export class TrainingApi {
   static async evaluate(sentence: TrainingSentence, recording: RecordingResult): Promise<EvaluationResult> {
