@@ -125,21 +125,59 @@ struct Index {
   @Builder
   private ProgressStrip() {
     Row({ space: 10 }) {
-      this.StatTile('完成', `${this.visibleCompletedCount}`)
-      this.StatTile('最佳', this.visibleBestScore > 0 ? `${this.visibleBestScore}` : '-')
-      this.StatTile('平均', this.visibleAverageScore > 0 ? `${this.visibleAverageScore}` : '-')
+      this.CompletedStatTile()
+      this.BestStatTile()
+      this.AverageStatTile()
     }
     .width('100%')
   }
 
   @Builder
-  private StatTile(label: string, value: string) {
+  private CompletedStatTile() {
     Column({ space: 3 }) {
-      Text(value)
+      Text(`${this.visibleCompletedCount}`)
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor(COLOR_INK)
-      Text(label)
+      Text('完成')
+        .fontSize(11)
+        .fontColor(COLOR_MUTED)
+    }
+    .justifyContent(FlexAlign.Center)
+    .height(72)
+    .layoutWeight(1)
+    .backgroundColor(COLOR_CARD)
+    .borderRadius(8)
+    .border({ width: 1, color: COLOR_LINE })
+  }
+
+  @Builder
+  private BestStatTile() {
+    Column({ space: 3 }) {
+      Text(this.visibleBestScore > 0 ? `${this.visibleBestScore}` : '-')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(COLOR_INK)
+      Text('最佳')
+        .fontSize(11)
+        .fontColor(COLOR_MUTED)
+    }
+    .justifyContent(FlexAlign.Center)
+    .height(72)
+    .layoutWeight(1)
+    .backgroundColor(COLOR_CARD)
+    .borderRadius(8)
+    .border({ width: 1, color: COLOR_LINE })
+  }
+
+  @Builder
+  private AverageStatTile() {
+    Column({ space: 3 }) {
+      Text(this.visibleAverageScore > 0 ? `${this.visibleAverageScore}` : '-')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(COLOR_INK)
+      Text('平均')
         .fontSize(11)
         .fontColor(COLOR_MUTED)
     }
