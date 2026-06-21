@@ -53,7 +53,6 @@ export default async function handler(request: VercelRequest, response: VercelRe
       details: error instanceof Error ? error.message : 'Unknown ASR error'
     });
   }
-  const firstWord = transcript.split(/\s+/)[0] || 'Opening';
   const pronunciationFeedback = await createPronunciationFeedback(payload.targetText, transcript, durationMs);
   const [languageFeedback, referenceAudioUrl] = await Promise.all([
     createLanguageFeedback(payload.targetText, transcript),
@@ -67,9 +66,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     pronunciationScore: pronunciationFeedback.pronunciationScore,
     intonationScore: pronunciationFeedback.intonationScore,
     feedback: pronunciationFeedback.feedback,
-    corrections: pronunciationFeedback.corrections.length > 0 ? pronunciationFeedback.corrections : [
-      fallbackCorrection(firstWord, payload.targetText)
-    ],
+    corrections: pronunciationFeedback.corrections,
     languageFeedback,
     referenceAudioUrl
   });
@@ -475,7 +472,8 @@ function cleanText(value: unknown): string {
 }
 
 function normalizePronunciationFeedback(value: Partial<PronunciationFeedback>, fallback: PronunciationFeedback): PronunciationFeedback {
-  const corrections = Array.isArray(value.corrections)
+  const hasModelCorrections = Array.isArray(value.corrections);
+  const corrections = hasModelCorrections
     ? value.corrections
       .map((item) => ({
         word: cleanText(item?.word),
@@ -492,7 +490,7 @@ function normalizePronunciationFeedback(value: Partial<PronunciationFeedback>, f
     pronunciationScore: normalizeScore(value.pronunciationScore, fallback.pronunciationScore),
     intonationScore: normalizeScore(value.intonationScore, fallback.intonationScore),
     feedback: cleanText(value.feedback) || fallback.feedback,
-    corrections: corrections.length > 0 ? corrections : fallback.corrections
+    corrections: hasModelCorrections ? corrections : fallback.corrections
   };
 }
 
